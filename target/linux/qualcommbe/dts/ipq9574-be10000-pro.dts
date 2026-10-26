@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+
+#include "ipq9570-be10000.dts"
+
+/ {
+	model = "Xiaomi BE10000 Pro";
+	compatible = "xiaomi,be10000-pro", "qcom,ipq9574";
+};
+
+&wifi_2g {
+	qcom,calibration-variant = "Xiaomi-BE10000-Pro";
+};
+
+&wifi_5gh {
+	qcom,calibration-variant = "Xiaomi-BE10000-Pro";
+	nvmem-cells = <&macaddr_art_12 0>;
+};
+
+&wifi_5gl {
+	qcom,calibration-variant = "Xiaomi-BE10000-Pro";
+	nvmem-cells = <&macaddr_art_c 0>;
+};

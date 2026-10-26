@@ -59,6 +59,12 @@ export function synchronize(uci, data, upstream4, target) {
 		let section = uci.get_all(config, sid);
 		if (section && section['.type'] != type_name) die(`Mode switch refused: section type changed at ${config}.${sid}`);
 		if (!section) {
+			// Preserve an explicit deletion recorded by the ownership snapshot.
+			// Recreating an empty managed section loses both user intent and the
+			// preset values needed by the new role.
+			let owned = length(filter(previous_state?.options || [], o => o.config == config && o.sid == sid)) ||
+				length(filter(previous_state?.created || [], s => s.config == config && s.sid == sid));
+			if (recorder?.mode != 'ap' && owned) return null;
 			if (!uci.set(config, sid, type_name)) die(`Cannot create ${config}.${sid}`);
 			changed[config] = true;
 			if (recorder) push(recorder.created, { config, sid });
@@ -75,6 +81,7 @@ export function synchronize(uci, data, upstream4, target) {
 		return ensure(config, type_name, sid);
 	}
 	function set(config, sid, values) {
+		if (sid == null) return;
 		for (let key, value in values) {
 			if (recorder) {
 				let option = record_option(uci, recorder, config, sid, key);
@@ -137,19 +144,28 @@ export function synchronize(uci, data, upstream4, target) {
 	if (previous != role) {
 		let context = saved_lan(previous_state);
 		let manual_lan = !!previous_state?.manual_lan || context && !equal(context, lan_context(uci));
+<<<<<<< HEAD
 		state = { version: 1, mode: role, options: [], created: [], manual_lan: !!manual_lan, dhcpv4_defaults: true,
+=======
+		// Carry missing managed sections forward as deletion markers across
+		// role changes, instead of recreating an explicitly removed section.
+		let deleted = map(filter(previous_state?.options || [], o => !uci.get_all(o.config, o.sid)), option => ({ ...option }));
+		state = { version: 1, mode: role, options: deleted, created: [], manual_lan: !!manual_lan, dhcpv4_defaults: true,
+>>>>>>> upstream/owrt
 			subnet_done: role != 'sub' || !!manual_lan, lan: lan_context(uci) };
 		recorder = state;
 		for (let group in [ data.common, data.roles[role] ])
 			for (let config in [ 'network', 'dhcp' ])
 				for (let name, options in group[config] || {}) {
-					ensure(config, config == 'network' ? 'interface' : 'dhcp', name);
-					set(config, name, config == 'network' && name == 'wan6' ?
+					let section = ensure(config, config == 'network' ? 'interface' : 'dhcp', name);
+					set(config, section, config == 'network' && name == 'wan6' ?
 						{ ...options, device: wan6_device(uci) } : options);
 				}
 		let zones = {};
 		for (let name in [ 'lan', 'wan' ]) {
-			zones[name] = find_unique('firewall', 'zone', section => section.name == name) || reserve('firewall', 'zone', 'router_tool_' + name);
+			let existing = find_unique('firewall', 'zone', section => section.name == name);
+			let deleted = length(filter(previous_state?.options || [], o => o.config == 'firewall' && o.key == 'name' && o.expected == name && !uci.get_all('firewall', o.sid)));
+			zones[name] = existing || (deleted ? null : reserve('firewall', 'zone', 'router_tool_' + name));
 			set('firewall', zones[name], { name, ...data.firewall.zones[name] });
 		}
 		for (let section in sections(uci, 'firewall', 'zone')) {
@@ -159,13 +175,16 @@ export function synchronize(uci, data, upstream4, target) {
 			set('firewall', section['.name'], { network: length(networks) ? networks : null });
 		}
 		for (let section in sections(uci, 'firewall', 'defaults')) set('firewall', section['.name'], { disable_ipv6: null });
-		let forward = find_unique('firewall', 'forwarding', section => section.src == 'lan' && section.dest == 'wan') || reserve('firewall', 'forwarding', 'router_tool_lan_wan');
+		let forward_existing = find_unique('firewall', 'forwarding', section => section.src == 'lan' && section.dest == 'wan');
+		let forward_deleted = length(filter(previous_state?.options || [], o => o.config == 'firewall' && o.key == 'src' && o.expected == 'lan' && !uci.get_all('firewall', o.sid) && length(filter(previous_state.options, p => p.config == 'firewall' && p.sid == o.sid && p.key == 'dest' && p.expected == 'wan'))));
+		let forward = forward_existing || (forward_deleted ? null : reserve('firewall', 'forwarding', 'router_tool_lan_wan'));
 		set('firewall', forward, { src: 'lan', dest: 'wan', enabled: '1', family: null });
 		for (let name, values in data.firewall.rules) {
 			let existing = find_unique('firewall', 'rule', section => section.name == name);
 			let enabled = name != 'Router-Tool-DHCPv6-Relay' || role == 'sub';
 			if (!enabled && !existing) continue;
-			let rule = existing || reserve('firewall', 'rule', 'router_tool_' + replace(lc(name), /-/g, '_'));
+			let deleted = length(filter(previous_state?.options || [], o => o.config == 'firewall' && o.key == 'name' && o.expected == name && !uci.get_all('firewall', o.sid)));
+			let rule = existing || (deleted ? null : reserve('firewall', 'rule', 'router_tool_' + replace(lc(name), /-/g, '_')));
 			set('firewall', rule, enabled ? { name, enabled: '1', src: 'wan', target: 'ACCEPT', src_ip: null, dest_ip: null, ...values } : { enabled: '0' });
 		}
 		recorder = null;

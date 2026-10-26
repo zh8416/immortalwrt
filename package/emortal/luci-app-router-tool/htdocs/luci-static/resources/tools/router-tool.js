@@ -117,6 +117,7 @@ function finishSnapshot(state) {
 }
 
 function setOptions(config, sid, values) {
+	if (sid == null) return;
 	for (const [ key, value ] of Object.entries(values)) {
 		if (recorder) {
 			const option = recordOption(recorder, config, sid, key);
@@ -139,6 +140,10 @@ function ensure(config, type, sid) {
 	const section = uci.get(config, sid);
 	if (section && section['.type'] != type) refuse(_('Mode switch refused: section type changed at') + ` ${config}.${sid}`);
 	if (section == null) {
+		// A user deletion is an explicit ownership decision. Do not replace a
+		// previously managed section with an empty shell on the next role switch.
+		if (recorder?.mode != 'ap' && previousSnapshot?.options?.some(o => o.config == config && o.sid == sid) ||
+			recorder?.mode != 'ap' && previousSnapshot?.created?.some(s => s.config == config && s.sid == sid)) return null;
 		uci.add(config, type, sid);
 		if (recorder) recorder.created.push({ config, sid });
 	}
@@ -336,7 +341,10 @@ function validateAp(topo, context) {
 }
 
 function zone(name) {
-	return findUnique('firewall', 'zone', s => s.name == name) || reserve('firewall', 'zone', `router_tool_${name}`);
+	const existing = findUnique('firewall', 'zone', s => s.name == name);
+	if (existing) return existing;
+	const deleted = previousSnapshot?.options?.some(o => o.config == 'firewall' && o.key == 'name' && o.expected == name && !uci.get('firewall', o.sid));
+	return deleted ? null : reserve('firewall', 'zone', `router_tool_${name}`);
 }
 
 function configureFirewall(role, data) {
@@ -351,13 +359,19 @@ function configureFirewall(role, data) {
 		setOptions('firewall', sid, { name, ...data.zones[name], ...(role == 'relay_ap' ? { masq: '0' } : {}) });
 	for (const section of uci.sections('firewall', 'defaults'))
 		setOptions('firewall', section['.name'], { disable_ipv6: null });
-	const forwarding = findUnique('firewall', 'forwarding', s => s.src == 'lan' && s.dest == 'wan') || reserve('firewall', 'forwarding', 'router_tool_lan_wan');
+	const forwardingExisting = findUnique('firewall', 'forwarding', s => s.src == 'lan' && s.dest == 'wan');
+	const forwardingDeleted = previousSnapshot?.options?.some(o => o.config == 'firewall' &&
+		[ 'src', 'dest' ].includes(o.key) && !uci.get('firewall', o.sid) &&
+		previousSnapshot.options.some(p => p.config == 'firewall' && p.sid == o.sid && p.key == 'src' && p.expected == 'lan') &&
+		previousSnapshot.options.some(p => p.config == 'firewall' && p.sid == o.sid && p.key == 'dest' && p.expected == 'wan'));
+	const forwarding = forwardingExisting || (forwardingDeleted ? null : reserve('firewall', 'forwarding', 'router_tool_lan_wan'));
 	setOptions('firewall', forwarding, { src: 'lan', dest: 'wan', enabled: role == 'relay_ap' ? '0' : '1', family: null });
 	for (const [ name, values ] of Object.entries(data.rules)) {
 		const existing = findUnique('firewall', 'rule', s => s.name == name);
 		const enabled = role != 'relay_ap' && (name != 'Router-Tool-DHCPv6-Relay' || role == 'sub');
 		if (!enabled && !existing) continue;
-		const sid = existing || reserve('firewall', 'rule', 'router_tool_' + name.toLowerCase().replaceAll('-', '_'));
+		const deleted = previousSnapshot?.options?.some(o => o.config == 'firewall' && o.key == 'name' && o.expected == name && !uci.get('firewall', o.sid));
+		const sid = existing || (deleted ? null : reserve('firewall', 'rule', 'router_tool_' + name.toLowerCase().replaceAll('-', '_')));
 		if (!enabled) setOptions('firewall', sid, { enabled: '0' });
 		else setOptions('firewall', sid, { name, enabled: '1', src: 'wan', target: 'ACCEPT', src_ip: null, dest_ip: null, ...values });
 	}
@@ -425,15 +439,22 @@ function synchronize(sid, context) {
 	if (uci.get('network', sid, 'router_tool_auto') != role) {
 		console.info(`[router-tool] Preparing ${role} router presets`);
 		const manualLan = !!previousSnapshot?.manual_lan || !!beforeLan && !equal(beforeLan, lanContext());
+<<<<<<< HEAD
 		const state = { version: 1, mode: role, options: [], created: [], manual_lan: manualLan, dhcpv4_defaults: true,
+=======
+		// Carry missing managed sections forward as deletion markers. Without
+		// this, switching away and back would recreate an explicit deletion.
+		const deleted = (previousSnapshot?.options || []).filter(o => !uci.get(o.config, o.sid)).map(copy);
+		const state = { version: 1, mode: role, options: deleted, created: [], manual_lan: manualLan, dhcpv4_defaults: true,
+>>>>>>> upstream/owrt
 			subnet_done: role != 'sub' || manualLan, lan: lanContext() };
 		recorder = state;
 		try {
 			for (const group of [ context.presets.common, context.presets.roles[role] ])
 				for (const config of [ 'network', 'dhcp' ])
 					for (const [ name, options ] of Object.entries(group[config] || {})) {
-						ensure(config, config == 'network' ? 'interface' : 'dhcp', name);
-						setOptions(config, name, config == 'network' && name == 'wan6' ?
+						const section = ensure(config, config == 'network' ? 'interface' : 'dhcp', name);
+						setOptions(config, section, config == 'network' && name == 'wan6' ?
 							{ ...options, device: wan6Device() } : options);
 					}
 			configureFirewall(role, context.presets.firewall);
