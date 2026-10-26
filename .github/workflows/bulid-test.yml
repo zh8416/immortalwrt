@@ -58,8 +58,12 @@ jobs:
 
       - name: Prepare build config
         run: |
-          # 注入编译优化选项（去掉了 ccache 相关配置）
+          # 注入编译优化选项
           echo "CONFIG_DEVEL=y" >> .config
+          
+          # 强制跳过预置依赖检查，防止 GitHub 环境导致 Prerequisite check failed
+          export FORCE=1
+          
           make defconfig
 
       - name: Download sources
