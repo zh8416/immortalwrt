@@ -1,4 +1,5 @@
 From: ViKing <viking.yfy@qq.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
 Subject: [PATCH] wifi: ath12k: fix fixed-memory request lifetime
 
 Firmware recovery can repeat or change a QMI request. Keep fixed mapping
@@ -17,7 +18,6 @@ board-layout patch in the owner-based request implementation. Keep
 the optional CALDB zero-address contract and all lifetime safeguards.
 The final QMI assignment and teardown code remains unchanged.
 
-Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
 --- a/drivers/net/wireless/ath/ath12k/debugfs.c

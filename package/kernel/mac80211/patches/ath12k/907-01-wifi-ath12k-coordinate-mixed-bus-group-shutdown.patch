@@ -1,24 +1,26 @@
+From dfa0345057d5ef5dd7670544b833d3a5f92f62c0 Mon Sep 17 00:00:00 2001
 From: ViKing <viking.yfy@qq.com>
+Date: Sun, 25 Oct 2026 12:15:25 +0800
 Subject: [PATCH] wifi: ath12k: coordinate mixed-bus group shutdown
 
-PCI shutdown walks every device in an MLO hardware group. On BE6500 this
-includes IPQ5332 AHB state, which cannot be passed to the PCI power-down
-routine. Quiesce shared DMA and submit MLO teardown to all partners. Wait
-for bounded completion ACKs before destroying radios or stopping WMI.
-Use each device's HIF callback and make group power-down idempotent.
+PCI shutdown must stop shared DMA and complete MLO teardown before
+stopping WMI. Use per-device HIF callbacks for mixed PCI/AHB groups.
 
-Validate completion TLV size, correlate pdev and retain firmware status.
-Report teardown timeout or firmware errors. Preserve
-the local PCI fallback when the group was not initialized or QMI failed.
-
-Skip group teardown if setup failed before radio registration: the error
-path has already destroyed the radio objects and cannot free their DP again.
+Validate teardown events, preserve bounded waits, and retain the PCI
+fallback when group setup or QMI initialization fails.
 
 Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
+ drivers/net/wireless/ath/ath12k/core.c |  9 ++++---
+ drivers/net/wireless/ath/ath12k/core.h |  4 +++
+ drivers/net/wireless/ath/ath12k/mac.c  | 37 ++++++++++++++++++++++----
+ drivers/net/wireless/ath/ath12k/pci.c  | 15 ++++++++++-
+ drivers/net/wireless/ath/ath12k/wmi.c  | 26 +++++++++++++++---
+ 5 files changed, 77 insertions(+), 14 deletions(-)
+
 --- a/drivers/net/wireless/ath/ath12k/core.c
 +++ b/drivers/net/wireless/ath/ath12k/core.c
-@@ -1091,8 +1091,12 @@
+@@ -1091,8 +1091,12 @@ static void ath12k_core_hw_group_stop(st
  
  	lockdep_assert_held(&ag->mutex);
  
@@ -32,7 +34,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	for (i = ag->num_devices - 1; i >= 0; i--) {
  		ab = ag->ab[i];
-@@ -1107,9 +1111,6 @@
+@@ -1107,9 +1111,6 @@ static void ath12k_core_hw_group_stop(st
  	/* Unregister MAC (drops wiphys) only after per-device cleanup */
  	ath12k_mac_unregister(ag);
  
@@ -44,7 +46,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
 --- a/drivers/net/wireless/ath/ath12k/core.h
 +++ b/drivers/net/wireless/ath/ath12k/core.h
-@@ -268,6 +268,7 @@
+@@ -268,6 +268,7 @@ enum ath12k_hw_group_flags {
  	ATH12K_GROUP_FLAG_REGISTERED,
  	ATH12K_GROUP_FLAG_UNREGISTER,
  	ATH12K_GROUP_FLAG_DS_QUARANTINED,
@@ -52,7 +54,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  };
  
  enum ath12k_dev_flags {
-@@ -770,6 +771,9 @@
+@@ -770,6 +771,9 @@ struct ath12k {
  
  	struct completion mlo_setup_done;
  	u32 mlo_setup_status;
@@ -64,7 +66,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	unsigned long last_tx_power_update;
 --- a/drivers/net/wireless/ath/ath12k/mac.c
 +++ b/drivers/net/wireless/ath/ath12k/mac.c
-@@ -15439,6 +15439,7 @@
+@@ -15439,6 +15439,7 @@ static void ath12k_mac_setup(struct ath1
  	init_completion(&ar->scan.completed);
  	init_completion(&ar->scan.on_channel);
  	init_completion(&ar->mlo_setup_done);
@@ -72,7 +74,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	init_completion(&ar->completed_11d_scan);
  	init_completion(&ar->regd_update_completed);
  	init_completion(&ar->thermal.wmi_sync);
-@@ -15545,8 +15546,12 @@
+@@ -15545,8 +15546,12 @@ static int __ath12k_mac_mlo_teardown(str
  	if (num_link == 0)
  		return 0;
  
@@ -85,7 +87,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		ath12k_warn(ab, "failed to send MLO teardown WMI command for pdev %d: %d\n",
  			    ar->pdev_idx, ret);
  		return ret;
-@@ -15603,20 +15608,42 @@
+@@ -15603,20 +15608,42 @@ void ath12k_mac_mlo_teardown(struct ath1
  {
  	struct ath12k_hw *ah;
  	struct ath12k *ar;
@@ -135,7 +137,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  }
 --- a/drivers/net/wireless/ath/ath12k/pci.c
 +++ b/drivers/net/wireless/ath/ath12k/pci.c
-@@ -1746,16 +1746,25 @@
+@@ -1750,16 +1750,25 @@ static void ath12k_pci_hw_group_power_do
  	if (!ag)
  		return;
  
@@ -162,7 +164,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	mutex_unlock(&ag->mutex);
  }
  
-@@ -1765,6 +1774,10 @@
+@@ -1769,6 +1778,10 @@ static void ath12k_pci_shutdown(struct p
  	struct ath12k_pci *ab_pci = ath12k_pci_priv(ab);
  
  	ath12k_pci_set_irq_affinity_hint(ab_pci, NULL);
@@ -175,7 +177,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
 --- a/drivers/net/wireless/ath/ath12k/wmi.c
 +++ b/drivers/net/wireless/ath/ath12k/wmi.c
-@@ -9955,8 +9955,10 @@
+@@ -9955,8 +9955,10 @@ static void ath12k_wmi_event_teardown_co
  					       struct sk_buff *skb)
  {
  	const struct wmi_mlo_teardown_complete_event *ev;
@@ -187,7 +189,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	tb = ath12k_wmi_tlv_parse(ab, skb);
  	if (IS_ERR(tb)) {
-@@ -9966,8 +9968,24 @@
+@@ -9966,8 +9968,24 @@ static void ath12k_wmi_event_teardown_co
  	}
  
  	ev = tb[WMI_TAG_MLO_TEARDOWN_COMPLETE];
@@ -214,7 +216,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  }
  
  #ifdef CPTCFG_ATH12K_DEBUGFS
-@@ -11825,7 +11843,7 @@
+@@ -11825,7 +11843,7 @@ int ath12k_wmi_mlo_teardown(struct ath12
  	cmd->tlv_header = ath12k_wmi_tlv_cmd_hdr(WMI_TAG_MLO_TEARDOWN_CMD,
  						 sizeof(*cmd));
  	cmd->pdev_id = cpu_to_le32(ar->pdev->pdev_id);

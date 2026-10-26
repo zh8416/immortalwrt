@@ -1,4 +1,5 @@
-From: OpenWrt community <openwrt-devel@lists.openwrt.org>
+From: ViKing <viking.yfy@qq.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
 Subject: [PATCH] wifi: ath: split world regulatory rules at the DFS boundary
 
 Separate the lower 5 GHz range from DFS channels and derive each world

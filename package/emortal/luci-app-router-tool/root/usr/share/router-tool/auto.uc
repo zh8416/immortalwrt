@@ -1,5 +1,5 @@
 // Shared preset data is also used by the LuCI post-parse save callback.
-import { read_snapshot, check_snapshot, record_option, record_context, finish_snapshot } from './snapshot.uc';
+import { read_snapshot, record_option, custom_option, tracked_option, lan_context, saved_lan, equal, finish_snapshot } from './snapshot.uc';
 
 function sections(uci, config, type) {
 	let result = [];
@@ -54,6 +54,7 @@ function overlaps(a, b) {
 export function synchronize(uci, data, upstream4, target) {
 	let changed = {};
 	let recorder = null;
+	let previous_state = null;
 	function ensure(config, type_name, sid) {
 		let section = uci.get_all(config, sid);
 		if (section && section['.type'] != type_name) die(`Mode switch refused: section type changed at ${config}.${sid}`);
@@ -75,7 +76,17 @@ export function synchronize(uci, data, upstream4, target) {
 	}
 	function set(config, sid, values) {
 		for (let key, value in values) {
-			if (recorder) record_option(uci, recorder, config, sid, key);
+			if (recorder) {
+				let option = record_option(uci, recorder, config, sid, key);
+				if (recorder.mode != 'ap' && custom_option(uci, previous_state, config, sid, key)) {
+					if (option) option.custom = true;
+					continue;
+				}
+				if (option && recorder.mode != 'ap') option.expected = value;
+				else if (!option && recorder.mode != 'ap')
+					for (let section in recorder.created)
+						if (section.config == config && section.sid == sid && section.values) section.values[key] = value;
+			}
 			let previous = uci.get(config, sid, key);
 			if (value == null && previous == null) continue;
 			if (sprintf('%J', value) == sprintf('%J', previous)) continue;
@@ -90,7 +101,9 @@ export function synchronize(uci, data, upstream4, target) {
 	let previous = uci.get('network', sid, 'router_tool_auto');
 	let saved = uci.get('network', sid, 'router_tool_state');
 	let state = previous || saved ? read_snapshot(saved, previous) : null;
-	if (!ap && previous != role && state) check_snapshot(uci, state, true);
+	let context = saved_lan(state);
+	if (context && !equal(context, lan_context(uci))) state.manual_lan = true;
+	previous_state = state;
 	// Apply platform defaults once; preserve explicit user choices on reload
 	// and role changes, including disabled RPS/RFS and all-CPU steering.
 	let defaults = data.platform_defaults?.[target] || data.platform_defaults?.[split(target || '', '/')[0]];
@@ -112,8 +125,20 @@ export function synchronize(uci, data, upstream4, target) {
 	if (uci.get('network', sid, 'router_tool_ula_cleanup_done') != '1')
 		set('network', sid, { ula_prefix: null, router_tool_ula_cleanup_done: '1' });
 	if (ap) return keys(changed);
+	// Older ownership records only watched LAN DHCPv4 and could retain an
+	// inherited disabled server. Initialize it once, preserving later edits.
+	let dhcpv4_defaults = state && previous == role && !state.dhcpv4_defaults;
+	if (dhcpv4_defaults) {
+		recorder = state;
+		set('dhcp', 'lan', { ignore: data.common.dhcp.lan.ignore, dhcpv4: data.common.dhcp.lan.dhcpv4 });
+		recorder = null;
+		state.dhcpv4_defaults = true;
+	}
 	if (previous != role) {
-		state = { version: 1, mode: role, options: [], created: [], subnet_done: role != 'sub' };
+		let context = saved_lan(previous_state);
+		let manual_lan = !!previous_state?.manual_lan || context && !equal(context, lan_context(uci));
+		state = { version: 1, mode: role, options: [], created: [], manual_lan: !!manual_lan, dhcpv4_defaults: true,
+			subnet_done: role != 'sub' || !!manual_lan, lan: lan_context(uci) };
 		recorder = state;
 		for (let group in [ data.common, data.roles[role] ])
 			for (let config in [ 'network', 'dhcp' ])
@@ -143,18 +168,18 @@ export function synchronize(uci, data, upstream4, target) {
 			let rule = existing || reserve('firewall', 'rule', 'router_tool_' + replace(lc(name), /-/g, '_'));
 			set('firewall', rule, enabled ? { name, enabled: '1', src: 'wan', target: 'ACCEPT', src_ip: null, dest_ip: null, ...values } : { enabled: '0' });
 		}
-		record_context(uci, state, data);
 		recorder = null;
 		set('network', sid, { router_tool_auto: role });
 	}
 	// Await the first lease, then check the LAN subnet once for this mode.
 	// Later lease events must not overwrite a user's addressing decisions.
 	if (role == 'sub' && !state.subnet_done && length(upstream4 || [])) {
-		if (previous == role) check_snapshot(uci, state);
+		let context = saved_lan(state);
+		if (context && !equal(context, lan_context(uci))) state.manual_lan = true;
 		recorder = state;
 		let upstream = filter(map(upstream4 || [], address => subnet(address)), address => address != null);
 		let lan = filter(map(array(uci.get('network', 'lan', 'ipaddr')), address => subnet(address, uci.get('network', 'lan', 'netmask'))), address => address != null);
-		if (uci.get('network', 'lan', 'proto') == 'static' && length(filter(lan, a => length(filter(upstream, b => overlaps(a, b)))))) {
+		if (!state.manual_lan && uci.get('network', 'lan', 'proto') == 'static' && length(filter(lan, a => length(filter(upstream, b => overlaps(a, b)))))) {
 			let occupied = [ ...upstream ];
 			for (let section in sections(uci, 'network', 'interface'))
 				if (section['.name'] != 'lan')
@@ -176,12 +201,18 @@ export function synchronize(uci, data, upstream4, target) {
 	}
 	else if (previous != role) set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
 	else {
-		for (let option in state.options)
-			if (option.config == 'network' && option.sid == 'wan' && option.key == 'proto' && option.expected != uci.get('network', 'wan', 'proto')) {
-				check_snapshot(uci, state, true);
-				option.expected = uci.get('network', 'wan', 'proto');
-				set('network', sid, { router_tool_state: sprintf('%J', state) });
-			}
+		let protocol = tracked_option(state, 'network', 'wan', 'proto');
+		let last_proto = state.proto ?? protocol?.expected;
+		let device = tracked_option(state, 'network', 'wan6', 'device');
+		if (last_proto != uci.get('network', 'wan', 'proto') ||
+			device && !device.custom && device.expected != wan6_device(uci) && !custom_option(uci, state, 'network', 'wan6', 'device')) {
+			recorder = state;
+			set('network', 'wan6', { device: wan6_device(uci) });
+			recorder = null;
+			if (protocol) protocol.expected = uci.get('network', 'wan', 'proto');
+			set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
+		}
 	}
+	if (dhcpv4_defaults) set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
 	return keys(changed);
 }

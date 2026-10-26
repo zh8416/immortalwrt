@@ -1,4 +1,5 @@
-From: JiaY-shi <shi05275@163.com>
+From: ViKing <viking.yfy@qq.com>
+Date: Sun, 25 Oct 2026 14:06:01 +0800
 Subject: [PATCH] wifi: ath12k: automatically enable supported native Direct Switch
 
 Remove the experimental ppe_ds runtime switch. When the native transport
@@ -10,7 +11,7 @@ bidirectional partner DMA mappings. Platforms without a supported provider
 keep ordinary forwarding. Peer authorization, fault isolation and DMA
 quiescence checks are unchanged.
 
-Signed-off-by: JiaY-shi <shi05275@163.com>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 
 Adapted from JiaY-shi/flint3e-support 89783319734e683acde27509c401d163f6319e7a.
 Retain the local VP lifecycle and AHB RX completion/refill protections.
