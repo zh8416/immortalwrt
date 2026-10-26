@@ -260,6 +260,11 @@ ifneq ($(CONFIG_USE_APK),)
 	mkdir -p $(1)/etc/apk/repositories.d
 	$(call FeedSourcesAppendAPK,$(1)/etc/apk/repositories.d/distfeeds.list)
 	$(VERSION_SED_SCRIPT) $(1)/etc/apk/repositories.d/distfeeds.list
+	# --- 以下为自定义修改：删除失效的 PON 源 ---
+	sed -i '/pon_drivers/d' $(1)/etc/apk/repositories.d/distfeeds.list
+	sed -i '/pon_userspace/d' $(1)/etc/apk/repositories.d/distfeeds.list
+	# --- 以下为自定义修改：把官方域名全部替换为你确认能用的加速镜像域名 ---
+	sed -i 's|https://downloads.immortalwrt.org|https://mirrors.vsean.net/openwrt|g' $(1)/etc/apk/repositories.d/distfeeds.list
 
 	rm -f $(1)/etc/uci-defaults/13_fix-group-user
 	rm -f $(1)/sbin/pkg_check
