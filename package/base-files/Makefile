@@ -173,11 +173,9 @@ define Package/base-files/install
 	$(CP) ./files/* $(1)/
 	$(Package/base-files/install-key)
 	
-	# --- 自定义修改：下载第三方源公钥，并创建 customfeeds.list ---
-	mkdir -p $(1)/etc/apk/keys $(1)/etc/apk/repositories.d
-	wget -q -O $(1)/etc/apk/keys/dllkids-feed.pub.pem https://down.dllkids.xyz/openwrt-feed/keys/dllkids-feed.pub.pem || \
-	curl -fsSL -o $(1)/etc/apk/keys/dllkids-feed.pub.pem https://down.dllkids.xyz/openwrt-feed/keys/dllkids-feed.pub.pem
-	echo "https://down.dllkids.xyz/openwrt-feed/25.12/aarch64_cortex-a53/packages.adb" > $(1)/etc/apk/repositories.d/customfeeds.list
+	# ----------------------------------------------------------------
+	# --- 自定义修改：本地公钥已放在 files/etc/apk/keys/，上面 CP 会自动打包。
+	# --- 已去除 customfeeds.list 生成，避免与 apk-openssl 冲突。
 	# ----------------------------------------------------------------
 	
 	$(Package/base-files/nand-support)
