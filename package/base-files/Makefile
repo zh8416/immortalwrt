@@ -172,6 +172,14 @@ endif
 define Package/base-files/install
 	$(CP) ./files/* $(1)/
 	$(Package/base-files/install-key)
+	
+	# --- 自定义修改：下载第三方源公钥，并创建 customfeeds.list ---
+	mkdir -p $(1)/etc/apk/keys $(1)/etc/apk/repositories.d
+	wget -q -O $(1)/etc/apk/keys/dllkids-feed.pub.pem https://down.dllkids.xyz/openwrt-feed/keys/dllkids-feed.pub.pem || \
+	curl -fsSL -o $(1)/etc/apk/keys/dllkids-feed.pub.pem https://down.dllkids.xyz/openwrt-feed/keys/dllkids-feed.pub.pem
+	echo "https://down.dllkids.xyz/openwrt-feed/25.12/aarch64_cortex-a53/packages.adb" > $(1)/etc/apk/repositories.d/customfeeds.list
+	# ----------------------------------------------------------------
+	
 	$(Package/base-files/nand-support)
 	$(Package/base-files/legacy-sdcard-support)
 	$(Package/base-files/emmc-support)
@@ -265,6 +273,8 @@ ifneq ($(CONFIG_USE_APK),)
 	sed -i '/pon_userspace/d' $(1)/etc/apk/repositories.d/distfeeds.list
 	# --- 以下为自定义修改：把官方域名全部替换为你确认能用的加速镜像域名 ---
 	sed -i 's|https://downloads.immortalwrt.org|https://mirrors.vsean.net/openwrt|g' $(1)/etc/apk/repositories.d/distfeeds.list
+	# --- 以下为自定义修改：将第三方源直接追加到 distfeeds.list 的末尾 ---
+	echo "https://down.dllkids.xyz/openwrt-feed/25.12/aarch64_cortex-a53/packages.adb" >> $(1)/etc/apk/repositories.d/distfeeds.list
 
 	rm -f $(1)/etc/uci-defaults/13_fix-group-user
 	rm -f $(1)/sbin/pkg_check
