@@ -396,7 +396,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  			ieee80211_free_txskb(hw, skb);
 --- a/drivers/net/wireless/ath/ath12k/wmi.c
 +++ b/drivers/net/wireless/ath/ath12k/wmi.c
-@@ -7075,25 +7075,29 @@
+@@ -7076,25 +7076,29 @@
  {
  	struct wmi_peer_delete_resp_event peer_del_resp;
  	struct ath12k *ar;

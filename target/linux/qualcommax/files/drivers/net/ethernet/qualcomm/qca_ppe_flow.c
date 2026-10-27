@@ -830,7 +830,8 @@ void ppe_flow_init(struct qca_ppe_priv *priv)
 	 * for PPPoE as well; both directions have been verified with live PPE flow
 	 * counters on CR1000A.
 	 */
-	ctrl = PPE_FLOW_EN | FIELD_PREP(PPE_FLOW_HASH_MODE1, 1);
+	ctrl = PPE_FLOW_EN | FIELD_PREP(PPE_FLOW_HASH_MODE0, 1) |
+	       FIELD_PREP(PPE_FLOW_HASH_MODE1, 1);
 	ppe_flow_age_timer_set(priv, &ctrl);
 	regmap_write(priv->regmap, PPE_FLOW_CTRL0, ctrl);
 }

@@ -127,7 +127,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  static struct flow_offload_tuple_rhash *
  nf_flow_offload_lookup(struct nf_flowtable_ctx *ctx,
  		       struct nf_flowtable *flow_table, struct sk_buff *skb)
-@@ -451,6 +494,14 @@
+@@ -455,6 +498,14 @@
  	if (flow_table->flags & NF_FLOWTABLE_COUNTER)
  		nf_ct_acct_update(flow->ct, tuplehash->tuple.dir, skb->len);
  
@@ -142,7 +142,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	return 1;
  }
  
-@@ -747,6 +798,14 @@
+@@ -751,6 +802,14 @@
  	if (flow_table->flags & NF_FLOWTABLE_COUNTER)
  		nf_ct_acct_update(flow->ct, tuplehash->tuple.dir, skb->len);
  

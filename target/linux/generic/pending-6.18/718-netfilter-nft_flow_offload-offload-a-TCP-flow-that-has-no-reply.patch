@@ -52,7 +52,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		offload_timeout = READ_ONCE(tn->offload_timeout);
 --- a/net/netfilter/nft_flow_offload.c
 +++ b/net/netfilter/nft_flow_offload.c
-@@ -77,7 +77,8 @@
+@@ -94,7 +94,8 @@
  		tcph = skb_header_pointer(pkt->skb, thoff, sizeof(_tcph),
  					  &_tcph);
  		if (unlikely(!tcph || tcph->fin || tcph->rst ||
@@ -62,9 +62,9 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  			goto out;
  		break;
  	case IPPROTO_UDP:
-@@ -129,7 +130,8 @@
+@@ -146,7 +147,8 @@
  
- 	flow->priority = pkt->skb->priority;
+ 	flow->priority = nft_flow_offload_priority(pkt);
  
 -	__set_bit(NF_FLOW_HW_BIDIRECTIONAL, &flow->flags);
 +	if (!tcph || test_bit(IPS_ASSURED_BIT, &ct->status))

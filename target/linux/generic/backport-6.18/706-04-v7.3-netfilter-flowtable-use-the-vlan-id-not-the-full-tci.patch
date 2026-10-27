@@ -1,4 +1,5 @@
-From: ViKing <viking.yfy@qq.com>
+From c203ecf905745d979de5df28fa657121f2e9342d Mon Sep 17 00:00:00 2001
+From: Shuangfeng He <huangya90@gmail.com>
 Date: Fri, 2 Oct 2026 16:42:53 +0800
 Subject: [PATCH] netfilter: flowtable: use the vlan id, not the full tci, in
  the tuple key
@@ -30,12 +31,13 @@ download over a 1G EPON line), before -> after:
 Fixes: 4cd91f7c290f ("netfilter: flowtable: add vlan support")
 Signed-off-by: Shuangfeng He <huangya90@gmail.com>
 Signed-off-by: Pablo Neira Ayuso <pablo@netfilter.org>
-
-Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
+ net/netfilter/nf_flow_table_ip.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
 --- a/net/netfilter/nf_flow_table_ip.c
 +++ b/net/netfilter/nf_flow_table_ip.c
-@@ -150,14 +150,14 @@
+@@ -150,14 +150,14 @@ static void nf_flow_tuple_encap(struct s
  	int i = 0;
  
  	if (skb_vlan_tag_present(skb)) {

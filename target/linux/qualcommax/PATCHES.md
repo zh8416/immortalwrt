@@ -26,3 +26,7 @@ from their exact application point. Keep kernel-version backports outside
 those units. Remove a redundant series suffix when only one member remains;
 remaining series members use consecutive suffixes. Preserve the primary
 numeric application prefix and validate the full replay result.
+
+PPE (0952) and EDMA (0953) registration remain separate to follow upstream
+driver updates. Common flowtable/FDB/VLAN interfaces are owned by generic;
+platform patches provide only their hardware consumers.

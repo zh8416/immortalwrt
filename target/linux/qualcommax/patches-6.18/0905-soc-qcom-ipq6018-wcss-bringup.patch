@@ -22,7 +22,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq6018.dtsi
 +++ b/arch/arm64/boot/dts/qcom/ipq6018.dtsi
-@@ -847,17 +847,115 @@
+@@ -852,17 +852,115 @@
  			};
  		};
  
@@ -143,7 +143,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  			interrupt-names = "wdog",
  					  "fatal",
  					  "ready",
-@@ -872,10 +970,8 @@
+@@ -877,10 +975,8 @@
  				      "wcss_reset",
  				      "wcss_q6_reset";
  
@@ -156,7 +156,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  			qcom,smem-states = <&wcss_smp2p_out 0>,
  					   <&wcss_smp2p_out 1>;
-@@ -1119,6 +1215,7 @@
+@@ -1124,6 +1220,7 @@
  
  		wcss_smp2p_out: master-kernel {
  			qcom,entry-name = "master-kernel";

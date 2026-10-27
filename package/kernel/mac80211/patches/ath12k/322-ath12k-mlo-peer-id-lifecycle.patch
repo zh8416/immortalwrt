@@ -516,7 +516,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  #endif /* _PEER_H_ */
 --- a/drivers/net/wireless/ath/ath12k/wmi.c
 +++ b/drivers/net/wireless/ath/ath12k/wmi.c
-@@ -6886,21 +6886,46 @@
+@@ -6884,21 +6884,46 @@
  	return 0;
  }
  
@@ -568,7 +568,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	if (!ev) {
  		ath12k_warn(ab, "failed to fetch peer assoc conf ev");
  		return -EPROTO;
-@@ -6908,6 +6933,13 @@
+@@ -6906,6 +6931,13 @@
  
  	peer_assoc_conf->vdev_id = le32_to_cpu(ev->vdev_id);
  	peer_assoc_conf->macaddr = ev->peer_macaddr.addr;
@@ -582,7 +582,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	return 0;
  }
-@@ -7582,9 +7614,16 @@
+@@ -7580,9 +7612,16 @@
  	struct wmi_peer_sta_kickout_arg arg = {};
  	struct ath12k_link_vif *arvif;
  	struct ieee80211_sta *sta;
@@ -599,7 +599,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	if (ath12k_pull_peer_sta_kickout_ev(ab, skb, &arg) != 0) {
  		ath12k_warn(ab, "failed to extract peer sta kickout event");
-@@ -7593,6 +7632,18 @@
+@@ -7591,6 +7630,18 @@
  
  	rcu_read_lock();
  
@@ -618,7 +618,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	spin_lock_bh(&ab->base_lock);
  
  	arsta = ath12k_link_sta_find_by_addr(ab, arg.mac_addr);
-@@ -7614,6 +7665,42 @@
+@@ -7612,6 +7663,42 @@
  	ahsta = arsta->ahsta;
  	sta = ath12k_ahsta_to_sta(ahsta);
  
@@ -661,7 +661,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	ath12k_dbg(ab, ATH12K_DBG_WMI,
  		   "peer sta kickout event %pM reason: %d rssi: %d\n",
  		   arg.mac_addr, arg.reason, arg.rssi);
-@@ -7950,6 +8037,8 @@
+@@ -7948,6 +8035,8 @@
  static void ath12k_peer_assoc_conf_event(struct ath12k_base *ab, struct sk_buff *skb)
  {
  	struct wmi_peer_assoc_conf_arg peer_assoc_conf = {};
@@ -670,7 +670,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	struct ath12k *ar;
  
  	if (ath12k_pull_peer_assoc_conf_ev(ab, skb, &peer_assoc_conf) != 0) {
-@@ -7958,8 +8047,9 @@
+@@ -7956,8 +8045,9 @@
  	}
  
  	ath12k_dbg(ab, ATH12K_DBG_WMI,
@@ -682,7 +682,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	rcu_read_lock();
  	ar = ath12k_mac_get_ar_by_vdev_id(ab, peer_assoc_conf.vdev_id);
-@@ -7971,6 +8061,14 @@
+@@ -7969,6 +8059,14 @@
  		return;
  	}
  
@@ -697,7 +697,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	complete(&ar->peer_assoc_done);
  	rcu_read_unlock();
  }
-@@ -9659,24 +9757,51 @@
+@@ -9657,24 +9755,51 @@
  	rcu_read_unlock();
  }
  
@@ -754,7 +754,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	if (!ev) {
  		ath12k_warn(ab, "failed to fetch mlo setup complete event\n");
  		return;
-@@ -9701,6 +9826,28 @@
+@@ -9699,6 +9824,28 @@
  	}
  
  	ar->mlo_setup_status = le32_to_cpu(ev->status);

@@ -2921,7 +2921,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	if (tg_cfg->is_wds_null_frame_supported)
  		wmi_cfg->flags2 |=
-@@ -9925,8 +9961,10 @@
+@@ -9923,8 +9959,10 @@
  					       struct sk_buff *skb)
  {
  	const struct wmi_mlo_teardown_complete_event *ev;
@@ -2933,7 +2933,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	tb = ath12k_wmi_tlv_parse(ab, skb);
  	if (IS_ERR(tb)) {
-@@ -9936,8 +9974,24 @@
+@@ -9934,8 +9972,24 @@
  	}
  
  	ev = tb[WMI_TAG_MLO_TEARDOWN_COMPLETE];
@@ -2960,7 +2960,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  }
  
  #ifdef CPTCFG_ATH12K_DEBUGFS
-@@ -11795,7 +11849,7 @@
+@@ -11793,7 +11847,7 @@
  	cmd->tlv_header = ath12k_wmi_tlv_cmd_hdr(WMI_TAG_MLO_TEARDOWN_CMD,
  						 sizeof(*cmd));
  	cmd->pdev_id = cpu_to_le32(ar->pdev->pdev_id);

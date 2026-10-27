@@ -30,3 +30,7 @@ single-member series such as ath11k 955 and ath12k 100/906 drop subindices.
 Version-labelled series stay unchanged. Shared driver contracts precede their
 consumers; native Direct Switch requires the matching kernel PPE interfaces.
 Always validate forward/reverse replay and the final expanded source.
+
+Use the upstream 007 IEEE80211 forward-path discovery and 108 compact DMA
+capability parser once each. Local AP forward-path resolution and PPDU limits
+remain separate. A sole 394 management-link patch has no series subindex.

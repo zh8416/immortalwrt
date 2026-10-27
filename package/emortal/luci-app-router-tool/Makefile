@@ -3,13 +3,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-router-tool
-<<<<<<< HEAD
-PKG_VERSION:=20261025
-PKG_RELEASE:=5
-=======
-PKG_VERSION:=20261026
-PKG_RELEASE:=1
->>>>>>> upstream/owrt
+PKG_VERSION:=20261027
+PKG_RELEASE:=2
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 PKG_LICENSE:=GPL-2.0-only
 

@@ -24,3 +24,7 @@ Merged patches retain their first primary ordering number. A collapsed series
 has no orphan -01 suffix; multi-member series are numbered consecutively.
 Preserved version backports are exempt from renaming. Generate each unit at
 its precise application point and verify both directions and final source.
+
+The 2010 series keeps the versioned PIL base unchanged, followed by distinct
+Q6 crash acknowledgements, UserPD boot metadata and auxiliary firmware units.
+Shared framework changes live in generic and are not duplicated here.

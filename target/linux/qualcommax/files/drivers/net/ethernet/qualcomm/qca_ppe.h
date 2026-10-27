@@ -63,6 +63,45 @@
 #define PPE_FLOW_PROTO_TCP	1
 #define PPE_FLOW_PROTO_UDP	2
 
+/* Flow table op engine */
+#define PPE_TBL_OP_ADD		0
+#define PPE_TBL_OP_DEL		1
+#define PPE_TBL_OP_GET		2
+#define PPE_TBL_OP_FLUSH	3
+#define PPE_FLOW_HASH_BLOCKS	3
+
+#define PPE_FLOW_ENTRY_WORDS_V4	5
+#define PPE_FLOW_ENTRY_WORDS_V6	9
+#define PPE_HOST_ENTRY_WORDS_V4	3
+#define PPE_HOST_ENTRY_WORDS_V6	5
+
+/* The two-bit age field is loaded at its maximum and counts down. */
+#define PPE_FLOW_AGE_MAX	3
+
+/* Flow control is configured per packet type and per direction. */
+#define PPE_FLOW_PKT_TYPES	3
+#define PPE_FLOW_MISS_FORWARD	0
+
+/* Age unit 0 counts seconds, which the hardware derives from the clock rate
+ * programmed into PPE_FLOW_CLK_FREQ_MHZ.
+ */
+#define PPE_FLOW_AGE_UNIT_SEC	0
+#define PPE_FLOW_AGE_SECS	60
+
+/* Forward types of a flow entry, as the hardware numbers them. */
+#define PPE_FLOW_FWD_FORWARD	0
+#define PPE_FLOW_FWD_SNAT	1
+#define PPE_FLOW_FWD_DNAT	2
+#define PPE_FLOW_FWD_ROUTE	3
+#define PPE_FLOW_FWD_BRIDGE	4
+#define PPE_FLOW_FWD_DROP	5
+#define PPE_FLOW_FWD_TO_CPU	6
+
+/* Protocol encoding of a flow entry's two-bit protocol field. */
+#define PPE_FLOW_PROTO_OTHER	0
+#define PPE_FLOW_PROTO_TCP	1
+#define PPE_FLOW_PROTO_UDP	2
+
 /* --- Global --- */
 #define PPE_SWITCH_ID			0x0
 #define   PPE_SWITCH_ID_REV		GENMASK(7, 0)
@@ -247,6 +286,14 @@
 #define   PPE_BRIDGE_TYPE_STAG		BIT(0)
 #define PPE_PORT_PARSING(port)		(PPE_IPR_BASE + (port) * 0x4)
 #define   PPE_PORT_PARSING_CORE		BIT(0)
+
+/* Eight TCP flag patterns, two to a register; a packet whose flags match a
+ * pattern under its mask raises exception PPE_EXCEP_TCP_FLAGS(n).
+ */
+#define PPE_L4_EXCEP_TCP_FLAGS(n)	(PPE_IPR_BASE + 0x28 + (n) / 2 * 0x4)
+#define   PPE_L4_EXCEP_FLAGS		GENMASK(5, 0)
+#define   PPE_L4_EXCEP_MASK		GENMASK(13, 8)
+#define   PPE_L4_EXCEP_SLOT_SHIFT	16
 
 /* Eight TCP flag patterns, two to a register; a packet whose flags match a
  * pattern under its mask raises exception PPE_EXCEP_TCP_FLAGS(n).
@@ -1784,6 +1831,7 @@ struct qca_ppe_priv {
 	DECLARE_BITMAP(vsi_retired, PPE_VSI_MAX);
 	u16 vsi_flow_refs[PPE_VSI_MAX];
 	DECLARE_BITMAP(xlt_bitmap, PPE_XLT_TBL_NUM);
+	/* The VSI each port is bound to, 0 outside a bridge. */
 	u32 port_vsi[QCA_PPE_MAX_PORTS];
 	/* The member mask each VSI was last programmed with, so a bridge flag
 	 * that narrows a flood class can reprogram every VSI it reaches.

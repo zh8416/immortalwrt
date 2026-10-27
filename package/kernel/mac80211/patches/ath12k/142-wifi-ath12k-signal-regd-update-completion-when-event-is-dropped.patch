@@ -1,5 +1,5 @@
 From 5ab45cf517d7ba0ac291e9f47a5585fe77705595 Mon Sep 17 00:00:00 2001
-From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+From: ViKing <viking.yfy@qq.com>
 Date: Wed, 29 Jul 2026 15:18:11 +0800
 Subject: [PATCH] wifi: ath12k: signal regd update completion when reg event is
  dropped
@@ -38,9 +38,11 @@ Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
  drivers/net/wireless/ath/ath12k/wmi.c | 11 +++++++++--
  1 file changed, 9 insertions(+), 2 deletions(-)
 
+Signed-off-by: ViKing <viking.yfy@qq.com>
+
 --- a/drivers/net/wireless/ath/ath12k/wmi.c
 +++ b/drivers/net/wireless/ath/ath12k/wmi.c
-@@ -6972,6 +6972,14 @@ static int ath12k_reg_chan_list_event(st
+@@ -6973,6 +6973,14 @@
  		goto mem_free;
  	}
  
@@ -55,7 +57,7 @@ Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
  	ret = ath12k_reg_validate_reg_info(ab, reg_info);
  	if (ret == ATH12K_REG_STATUS_FALLBACK) {
  		ath12k_warn(ab, "failed to validate reg info %d\n", ret);
-@@ -6988,7 +6996,6 @@ static int ath12k_reg_chan_list_event(st
+@@ -6989,7 +6997,6 @@
  	}
  
  	/* free old reg_info if it exist */
@@ -63,7 +65,7 @@ Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
  	if (ab->reg_info[pdev_idx]) {
  		ath12k_reg_reset_reg_info(ab->reg_info[pdev_idx]);
  		kfree(ab->reg_info[pdev_idx]);
-@@ -7027,7 +7034,7 @@ fallback:
+@@ -7028,7 +7035,7 @@
  
  out:
  	/* In some error cases, even a valid pdev_idx might not be available */

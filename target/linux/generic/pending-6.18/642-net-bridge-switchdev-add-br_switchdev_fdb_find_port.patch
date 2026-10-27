@@ -1,4 +1,5 @@
-From: ViKing <viking.yfy@qq.com>
+From d7dca77219fa6fe1776d6e7cac2547a012a7b6a6 Mon Sep 17 00:00:00 2001
+From: Julius Bairaktaris <julius@bairaktaris.de>
 Date: Sun, 4 Oct 2026 17:02:47 +0200
 Subject: [PATCH] net: bridge: switchdev: add br_switchdev_fdb_find_port()
 
@@ -13,12 +14,10 @@ deletion it will not be notified of.
 [ 6.18 has no br_fdb_dst_port(); read f->dst with READ_ONCE() as
   br_fdb_find_port() does ]
 Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
-
-Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
 --- a/include/linux/if_bridge.h
 +++ b/include/linux/if_bridge.h
-@@ -172,6 +172,19 @@
+@@ -172,6 +172,19 @@ static inline int br_mst_get_state(const
  }
  #endif
  
@@ -40,7 +39,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  				    const unsigned char *addr,
 --- a/net/bridge/br_switchdev.c
 +++ b/net/bridge/br_switchdev.c
-@@ -141,14 +141,10 @@
+@@ -141,14 +141,10 @@ static void br_switchdev_fdb_populate(st
  	item->info.ctx = ctx;
  }
  
@@ -57,7 +56,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	/* Entries with these flags were created using ndm_state == NUD_REACHABLE,
  	 * ndm_flags == NTF_MASTER( | NTF_STICKY), ext_flags == 0 by something
-@@ -156,9 +152,58 @@
+@@ -156,9 +152,58 @@ br_switchdev_fdb_notify(struct net_bridg
  	 * Drivers don't know how to deal with these, so don't notify them to
  	 * avoid confusing them.
  	 */

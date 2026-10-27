@@ -1,4 +1,5 @@
-From: ViKing <viking.yfy@qq.com>
+From c16c1851fd2eae3969ad70bbc663ce0035fad3bf Mon Sep 17 00:00:00 2001
+From: Julius Bairaktaris <julius@bairaktaris.de>
 Date: Sun, 4 Oct 2026 17:02:48 +0200
 Subject: [PATCH] net: dsa: fix host fdb refcount when a bridge fdb entry roams
 
@@ -37,12 +38,10 @@ happens in 5 of 5 runs, and the address is removed when the user ports
 leave the bridge.
 
 Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
-
-Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
 --- a/net/dsa/port.c
 +++ b/net/dsa/port.c
-@@ -457,7 +457,13 @@
+@@ -457,7 +457,13 @@ static void dsa_port_bridge_destroy(stru
  {
  	struct dsa_bridge *bridge = dp->bridge;
  
@@ -57,7 +56,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	if (!refcount_dec_and_test(&bridge->refcount))
  		return;
-@@ -528,7 +534,9 @@
+@@ -528,7 +534,9 @@ out_rollback_unoffload:
  					&dsa_user_switchdev_blocking_notifier);
  	dsa_flush_workqueue();
  out_rollback_unbridge:
@@ -67,7 +66,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  out_rollback:
  	dsa_port_bridge_destroy(dp, br);
  	return err;
-@@ -1040,13 +1048,14 @@
+@@ -1040,13 +1048,14 @@ int dsa_port_standalone_host_fdb_add(str
  	return dsa_port_host_fdb_add(dp, addr, vid, db);
  }
  
@@ -85,7 +84,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	};
  	int err;
  
-@@ -1066,6 +1075,12 @@
+@@ -1066,6 +1075,12 @@ int dsa_port_bridge_host_fdb_add(struct
  	return dsa_port_host_fdb_add(dp, addr, vid, db);
  }
  
@@ -98,7 +97,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  static int dsa_port_host_fdb_del(struct dsa_port *dp,
  				 const unsigned char *addr, u16 vid,
  				 struct dsa_db db)
-@@ -1091,13 +1106,14 @@
+@@ -1091,13 +1106,14 @@ int dsa_port_standalone_host_fdb_del(str
  	return dsa_port_host_fdb_del(dp, addr, vid, db);
  }
  
@@ -116,7 +115,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	};
  	int err;
  
-@@ -1113,6 +1129,12 @@
+@@ -1113,6 +1129,12 @@ int dsa_port_bridge_host_fdb_del(struct
  	return dsa_port_host_fdb_del(dp, addr, vid, db);
  }
  
@@ -131,7 +130,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  {
 --- a/net/dsa/port.h
 +++ b/net/dsa/port.h
-@@ -54,8 +54,14 @@
+@@ -54,8 +54,14 @@ int dsa_port_standalone_host_fdb_add(str
  				     const unsigned char *addr, u16 vid);
  int dsa_port_standalone_host_fdb_del(struct dsa_port *dp,
  				     const unsigned char *addr, u16 vid);
@@ -148,7 +147,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  int dsa_port_lag_fdb_add(struct dsa_port *dp, const unsigned char *addr,
 --- a/net/dsa/user.c
 +++ b/net/dsa/user.c
-@@ -42,6 +42,8 @@
+@@ -42,6 +42,8 @@ struct dsa_switchdev_event_work {
  	unsigned char addr[ETH_ALEN];
  	u16 vid;
  	bool host_addr;
@@ -157,7 +156,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  };
  
  enum dsa_standalone_event {
-@@ -2814,6 +2816,7 @@
+@@ -2814,6 +2816,7 @@ int dsa_user_create(struct dsa_port *por
  
  	p->dp = port;
  	INIT_LIST_HEAD(&p->mall_tc_list);
@@ -165,7 +164,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	port->user = user_dev;
  	dsa_user_setup_tagger(user_dev);
  
-@@ -3614,6 +3617,22 @@
+@@ -3614,6 +3617,22 @@ static int dsa_user_netdevice_event(stru
  	return NOTIFY_DONE;
  }
  
@@ -188,7 +187,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  static void
  dsa_fdb_offload_notify(struct dsa_switchdev_event_work *switchdev_work)
  {
-@@ -3626,6 +3645,170 @@
+@@ -3626,6 +3645,170 @@ dsa_fdb_offload_notify(struct dsa_switch
  				 switchdev_work->orig_dev, &info.info, NULL);
  }
  
@@ -359,7 +358,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  static void dsa_user_switchdev_event_work(struct work_struct *work)
  {
  	struct dsa_switchdev_event_work *switchdev_work =
-@@ -3640,6 +3823,12 @@
+@@ -3640,6 +3823,12 @@ static void dsa_user_switchdev_event_wor
  	dp = dsa_user_to_port(dev);
  	ds = dp->ds;
  
@@ -372,7 +371,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	switch (switchdev_work->event) {
  	case SWITCHDEV_FDB_ADD_TO_DEVICE:
  		if (switchdev_work->host_addr)
-@@ -3676,22 +3865,6 @@
+@@ -3676,22 +3865,6 @@ static void dsa_user_switchdev_event_wor
  	kfree(switchdev_work);
  }
  
@@ -395,7 +394,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  static int dsa_user_fdb_event(struct net_device *dev,
  			      struct net_device *orig_dev,
  			      unsigned long event, const void *ctx,
-@@ -3710,7 +3883,9 @@
+@@ -3710,7 +3883,9 @@ static int dsa_user_fdb_event(struct net
  
  	if (switchdev_fdb_is_dynamically_learned(fdb_info)) {
  		if (dsa_port_offloads_bridge_port(dp, orig_dev))
@@ -406,7 +405,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  		/* FDB entries learned by the software bridge or by foreign
  		 * bridge ports should be installed as host addresses only if
-@@ -3755,9 +3930,15 @@
+@@ -3755,9 +3930,15 @@ static int dsa_user_fdb_event(struct net
  	ether_addr_copy(switchdev_work->addr, fdb_info->addr);
  	switchdev_work->vid = fdb_info->vid;
  	switchdev_work->host_addr = host_addr;
@@ -424,7 +423,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
 --- a/net/dsa/user.h
 +++ b/net/dsa/user.h
-@@ -33,6 +33,12 @@
+@@ -33,6 +33,12 @@ struct dsa_user_priv {
  
  	/* TC context */
  	struct list_head	mall_tc_list;
@@ -437,7 +436,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  };
  
  void dsa_user_mii_bus_init(struct dsa_switch *ds);
-@@ -47,6 +53,8 @@
+@@ -47,6 +53,8 @@ void dsa_user_host_uc_uninstall(struct n
  void dsa_user_sync_ha(struct net_device *dev);
  void dsa_user_unsync_ha(struct net_device *dev);
  void dsa_user_setup_tagger(struct net_device *user);
