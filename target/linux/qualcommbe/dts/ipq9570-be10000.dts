@@ -3,6 +3,7 @@
 /dts-v1/;
 
 #include "ipq9574-common.dtsi"
+#include "ipq9574-common-wifi-pci.dtsi"
 #include "ipq9574-common-qca8084.dtsi"
 
 / {
@@ -118,7 +119,7 @@
 			no-map;
 		};
 
-		/* Independent radios must not share firmware-owned MLO scratch RAM. */
+		/* Firmware-private host DDR remains separate for each radio. */
 		wifi_2g_mem: wifi@50000000 {
 			reg = <0x0 0x50000000 0x0 0x04000000>;
 			no-map;
@@ -134,20 +135,14 @@
 			no-map;
 		};
 
-		wifi_2g_mlo: mlo-global@5c000000 {
+		/* All three devices in the WSI group share global MLO memory. */
+		mlo_mem: mlo-global@5c000000 {
 			reg = <0x0 0x5c000000 0x0 0x01200000>;
 			no-map;
 		};
 
-		wifi_5gh_mlo: mlo-global@5d200000 {
-			reg = <0x0 0x5d200000 0x0 0x01200000>;
-			no-map;
-		};
 
-		wifi_5gl_mlo: mlo-global@5e400000 {
-			reg = <0x0 0x5e400000 0x0 0x01200000>;
-			no-map;
-		};
+
 	};
 
 	sfp: sfp {
@@ -207,27 +202,6 @@
 	pinctrl-names = "default";
 	perst-gpios = <&tlmm 26 GPIO_ACTIVE_LOW>;
 	status = "okay";
-
-	pcie@0,0 {
-		device_type = "pci";
-		reg = <0 0 0 0 0>;
-		#address-cells = <3>;
-		#size-cells = <2>;
-		ranges;
-
-		wifi_2g: wifi@0 {
-			compatible = "pci17cb,1109";
-			reg = <0 0 0 0 0>;
-			qcom,board-id = <1>;
-			qcom,calibration-variant = "Xiaomi-BE10000";
-			qcom,num-radios = <1>;
-			qcom,force-unique-qrtr-id;
-			nvmem-cells = <&macaddr_art_6 0>;
-			nvmem-cell-names = "mac-address";
-			memory-region = <&wifi_2g_mem>, <&wifi_2g_mlo>;
-			memory-region-names = "host-ddr-mem", "mlo-global-mem";
-		};
-	};
 };
 
 &pcie1_phy {
@@ -239,27 +213,6 @@
 	pinctrl-names = "default";
 	perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
 	status = "okay";
-
-	pcie@0,0 {
-		device_type = "pci";
-		reg = <0 0 0 0 0>;
-		#address-cells = <3>;
-		#size-cells = <2>;
-		ranges;
-
-		wifi_5gh: wifi@0 {
-			compatible = "pci17cb,1109";
-			reg = <0 0 0 0 0>;
-			qcom,board-id = <4>;
-			qcom,calibration-variant = "Xiaomi-BE10000";
-			qcom,num-radios = <1>;
-			qcom,force-unique-qrtr-id;
-			nvmem-cells = <&macaddr_art_12 0>;
-			nvmem-cell-names = "mac-address";
-			memory-region = <&wifi_5gh_mem>, <&wifi_5gh_mlo>;
-			memory-region-names = "host-ddr-mem", "mlo-global-mem";
-		};
-	};
 };
 
 &pcie2_phy {
@@ -272,27 +225,6 @@
 	pinctrl-names = "default";
 	perst-gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
 	status = "okay";
-
-	pcie@0,0 {
-		device_type = "pci";
-		reg = <0 0 0 0 0>;
-		#address-cells = <3>;
-		#size-cells = <2>;
-		ranges;
-
-		wifi_5gl: wifi@0 {
-			compatible = "pci17cb,1109";
-			reg = <0 0 0 0 0>;
-			qcom,board-id = <2>;
-			qcom,calibration-variant = "Xiaomi-BE10000";
-			qcom,num-radios = <1>;
-			qcom,force-unique-qrtr-id;
-			nvmem-cells = <&macaddr_art_c 0>;
-			nvmem-cell-names = "mac-address";
-			memory-region = <&wifi_5gl_mem>, <&wifi_5gl_mlo>;
-			memory-region-names = "host-ddr-mem", "mlo-global-mem";
-		};
-	};
 };
 
 &pcie3_phy {
@@ -468,27 +400,27 @@
 						#nvmem-cell-cells = <1>;
 					};
 
-						macaddr_art_6: macaddr@6 {
-							compatible = "mac-base";
-							reg = <0x6 0x6>;
-							#nvmem-cell-cells = <1>;
-						};
+					macaddr_art_6: macaddr@6 {
+						compatible = "mac-base";
+						reg = <0x6 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
 
-						macaddr_art_c: macaddr@c {
-							compatible = "mac-base";
-							reg = <0xc 0x6>;
-							#nvmem-cell-cells = <1>;
-						};
+					macaddr_art_c: macaddr@c {
+						compatible = "mac-base";
+						reg = <0xc 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
 
-						macaddr_art_12: macaddr@12 {
-							compatible = "mac-base";
-							reg = <0x12 0x6>;
-							#nvmem-cell-cells = <1>;
-						};
+					macaddr_art_12: macaddr@12 {
+						compatible = "mac-base";
+						reg = <0x12 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
 
-						caldata_art_1000: calibration@1000 {
-							reg = <0x1000 0x20000>;
-						};
+					caldata_art_1000: calibration@1000 {
+						reg = <0x1000 0x20000>;
+					};
 				};
 			};
 
@@ -582,4 +514,37 @@
 
 &usb3 {
 	status = "okay";
+};
+
+&wifi1 {
+	qcom,board-id = <1>;
+	qcom,calibration-variant = "Xiaomi-BE10000";
+	qcom,num-radios = <1>;
+	qcom,force-unique-qrtr-id;
+	nvmem-cells = <&macaddr_art_6 0>;
+	nvmem-cell-names = "mac-address";
+	memory-region = <&wifi_2g_mem>, <&mlo_mem>;
+	memory-region-names = "host-ddr-mem", "mlo-global-mem";
+};
+
+&wifi2 {
+	qcom,board-id = <4>;
+	qcom,calibration-variant = "Xiaomi-BE10000";
+	qcom,num-radios = <1>;
+	qcom,force-unique-qrtr-id;
+	nvmem-cells = <&macaddr_art_12 0>;
+	nvmem-cell-names = "mac-address";
+	memory-region = <&wifi_5gh_mem>, <&mlo_mem>;
+	memory-region-names = "host-ddr-mem", "mlo-global-mem";
+};
+
+&wifi3 {
+	qcom,board-id = <2>;
+	qcom,calibration-variant = "Xiaomi-BE10000";
+	qcom,num-radios = <1>;
+	qcom,force-unique-qrtr-id;
+	nvmem-cells = <&macaddr_art_c 0>;
+	nvmem-cell-names = "mac-address";
+	memory-region = <&wifi_5gl_mem>, <&mlo_mem>;
+	memory-region-names = "host-ddr-mem", "mlo-global-mem";
 };

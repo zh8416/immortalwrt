@@ -7,16 +7,14 @@
 	compatible = "xiaomi,be10000-pro", "qcom,ipq9574";
 };
 
-&wifi_2g {
+&wifi1 {
 	qcom,calibration-variant = "Xiaomi-BE10000-Pro";
 };
 
-&wifi_5gh {
+&wifi2 {
 	qcom,calibration-variant = "Xiaomi-BE10000-Pro";
-	nvmem-cells = <&macaddr_art_12 0>;
 };
 
-&wifi_5gl {
+&wifi3 {
 	qcom,calibration-variant = "Xiaomi-BE10000-Pro";
-	nvmem-cells = <&macaddr_art_c 0>;
 };

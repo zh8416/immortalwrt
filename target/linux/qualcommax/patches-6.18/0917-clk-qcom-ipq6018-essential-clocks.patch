@@ -1,0 +1,36 @@
+From: ViKing <viking.yfy@qq.com>
+Date: Tue, 27 Oct 2026 09:40:00 +0800
+Subject: [PATCH] clk: qcom: preserve essential IPQ6018 fabric clocks
+
+Consolidate consecutive changes within this functional responsibility.
+Retain the final implementation and its error handling directly.
+
+Merged from:
+  0917-clk-qcom-gcc-ipq6018-mark-gcc_xo_clk_src-as-critical.patch
+  0918-clk-qcom-gcc-ipq6018-enable-nss_crypto_pll.patch
+
+Based on work by:
+  =?UTF-8?q?Andr=C3=A9=20Valentin?= <avalentin@marcant.net>
+  John Crispin <john@phrozen.org>
+
+Signed-off-by: ViKing <viking.yfy@qq.com>
+
+--- a/drivers/clk/qcom/gcc-ipq6018.c
++++ b/drivers/clk/qcom/gcc-ipq6018.c
+@@ -254,6 +254,7 @@
+ 				.fw_name = "xo",
+ 			},
+ 			.num_parents = 1,
++			.flags = CLK_IS_CRITICAL,
+ 			.ops = &clk_alpha_pll_ops,
+ 		},
+ 	},
+@@ -400,7 +401,7 @@
+ 				.fw_name = "xo",
+ 			},
+ 			.num_parents = 1,
+-			.flags = CLK_SET_RATE_PARENT,
++			.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
+ 			.ops = &clk_branch2_ops,
+ 		},
+ 	},
