@@ -109,15 +109,47 @@ jobs:
           draft: false
           prerelease: false
 
-# --- 新增：发布软件包到 gh-pages 分支 ---
-      - name: Deploy Packages to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # 这里的路径请根据你的固件输出目录调整，通常 .apk 文件在这个目录下
-          publish_dir: ./bin/targets/qualcommbe/ipq95xx/packages 
-          publish_branch: gh-pages
-          # 把它放到以架构命名的子目录中，方便区分
-          destination_dir: aarch64_cortex-a53
-          # 不保留旧文件，每次纯覆盖
-          keep_files: false
+      - name: Publish the feed to gh-pages
+        run: |
+          export ARCH="aarch64_cortex-a53"
+          export TARGET="qualcommbe/ipq95xx"
+          export FEED_BASE="snapshot"
+          # 动态提取内核哈希值 (Vermagic)
+          export VERMAGIC=$(grep "kernel" build_dir/target-*/linux-*/modules.builtin 2>/dev/null | head -n1 || cat bin/targets/qualcommbe/ipq95xx/profiles.json | grep -oP '(?<=kernel":")[^"]+' | head -n1 || echo "6.18.55")
+
+          git clone --branch gh-pages --single-branch \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+          cd pages
+          
+          # 1. 发布通用架构包 (luci, base, packages 等)
+          # 注意：这里的目录名根据你实际编译出来的来，如果目录名不一样请自行增删
+          for d in base luci packages routing telephony; do
+            [ -d "../bin/packages/$ARCH/$d" ] || continue
+            mkdir -p "feed/$FEED_BASE/$ARCH/$d"
+            rsync -a --delete "../bin/packages/$ARCH/$d/" "feed/$FEED_BASE/$ARCH/$d/"
+          done
+          
+          # 2. 发布内核专属包 (kmod 等)
+          mkdir -p "feed/targets/$TARGET/$VERMAGIC/packages"
+          rsync -a --delete "../bin/targets/$TARGET/packages/" "feed/targets/$TARGET/$VERMAGIC/packages/"
+
+          # 3. 提交并推送到 gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A feed
+          
+          if git diff --cached --quiet; then
+            echo "feed unchanged"
+          else
+            n=$(find "feed/$FEED_BASE/$ARCH" -name '*.apk' | wc -l)
+            k=$(find "feed/targets/$TARGET/$VERMAGIC" -name '*.apk' | wc -l)
+            git commit -q -m "feed: $n userspace packages and $k kernel modules for $VERMAGIC (${{ github.ref_name }})"
+            
+            # 带有重试机制的推送，防止并发冲突
+            for i in 1 2 3 4 5; do
+              git push -q origin gh-pages && break
+              [ $i = 5 ] && exit 1
+              sleep $((i * 10))
+              git pull -q --rebase origin gh-pages
+            done
+          fi
