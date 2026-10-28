@@ -88,12 +88,41 @@ jobs:
             bin/targets/*/*/*config.buildinfo
           if-no-files-found: error
 
-# --- 新增：发布软件包到 gh-pages-test 分支 ---
-      - name: Deploy Test Packages to gh-pages-test
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./bin/targets/qualcommbe/ipq95xx/packages 
-          publish_branch: gh-pages-test
-          destination_dir: aarch64_cortex-a53
-          keep_files: false
+      - name: Publish the feed to gh-pages-test
+        run: |
+          export ARCH="aarch64_cortex-a53"
+          export TARGET="qualcommbe/ipq95xx"
+          export FEED_BASE="snapshot-test"
+          export VERMAGIC=$(grep "kernel" build_dir/target-*/linux-*/modules.builtin 2>/dev/null | head -n1 || cat bin/targets/qualcommbe/ipq95xx/profiles.json | grep -oP '(?<=kernel":")[^"]+' | head -n1 || echo "6.18.55")
+
+          git clone --branch gh-pages-test --single-branch \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+          cd pages
+          
+          for d in base luci packages routing telephony; do
+            [ -d "../bin/packages/$ARCH/$d" ] || continue
+            mkdir -p "feed/$FEED_BASE/$ARCH/$d"
+            rsync -a --delete "../bin/packages/$ARCH/$d/" "feed/$FEED_BASE/$ARCH/$d/"
+          done
+          
+          mkdir -p "feed/targets/$TARGET/$VERMAGIC/packages"
+          rsync -a --delete "../bin/targets/$TARGET/packages/" "feed/targets/$TARGET/$VERMAGIC/packages/"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A feed
+          
+          if git diff --cached --quiet; then
+            echo "feed unchanged"
+          else
+            n=$(find "feed/$FEED_BASE/$ARCH" -name '*.apk' | wc -l)
+            k=$(find "feed/targets/$TARGET/$VERMAGIC" -name '*.apk' | wc -l)
+            git commit -q -m "feed: $n userspace packages and $k kernel modules for $VERMAGIC (${{ github.ref_name }})"
+            
+            for i in 1 2 3 4 5; do
+              git push -q origin gh-pages-test && break
+              [ $i = 5 ] && exit 1
+              sleep $((i * 10))
+              git pull -q --rebase origin gh-pages-test
+            done
+          fi
