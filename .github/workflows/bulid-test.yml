@@ -87,3 +87,13 @@ jobs:
             bin/targets/*/*/*.itb
             bin/targets/*/*/*config.buildinfo
           if-no-files-found: error
+
+# --- 新增：发布软件包到 gh-pages-test 分支 ---
+      - name: Deploy Test Packages to gh-pages-test
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./bin/targets/qualcommbe/ipq95xx/packages 
+          publish_branch: gh-pages-test
+          destination_dir: aarch64_cortex-a53
+          keep_files: false
