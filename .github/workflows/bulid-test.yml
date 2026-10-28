@@ -99,7 +99,7 @@ jobs:
             "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
           cd pages
           
-          for d in base luci packages routing telephony; do
+          for d in base luci kenzok packages routing telephony; do
             [ -d "../bin/packages/$ARCH/$d" ] || continue
             mkdir -p "feed/$FEED_BASE/$ARCH/$d"
             rsync -a --delete "../bin/packages/$ARCH/$d/" "feed/$FEED_BASE/$ARCH/$d/"
