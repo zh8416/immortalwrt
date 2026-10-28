@@ -439,14 +439,10 @@ function synchronize(sid, context) {
 	if (uci.get('network', sid, 'router_tool_auto') != role) {
 		console.info(`[router-tool] Preparing ${role} router presets`);
 		const manualLan = !!previousSnapshot?.manual_lan || !!beforeLan && !equal(beforeLan, lanContext());
-<<<<<<< HEAD
-		const state = { version: 1, mode: role, options: [], created: [], manual_lan: manualLan, dhcpv4_defaults: true,
-=======
 		// Carry missing managed sections forward as deletion markers. Without
 		// this, switching away and back would recreate an explicit deletion.
 		const deleted = (previousSnapshot?.options || []).filter(o => !uci.get(o.config, o.sid)).map(copy);
 		const state = { version: 1, mode: role, options: deleted, created: [], manual_lan: manualLan, dhcpv4_defaults: true,
->>>>>>> upstream/owrt
 			subnet_done: role != 'sub' || manualLan, lan: lanContext() };
 		recorder = state;
 		try {
