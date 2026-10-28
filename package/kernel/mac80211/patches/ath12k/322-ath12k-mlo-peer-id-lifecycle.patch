@@ -1,9 +1,32 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: honor firmware peer limits and own pending MLO peer IDs
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The valid ML peer ID range is platform dependent and is reported by
+firmware in the MLO setup complete event. The upstream driver ignores this
+field and allocates IDs from the compile-time maximum, starting at zero.
+Current Qualcomm firmware reserves ID zero and expects the host to stay
+inside the advertised range. Sending an invalid ID can leave the cross-chip
+peer mapping inconsistent.
+
+Qualcomm firmware can reject a peer association when the ML peer ID is
+still present in its peer table. The peer assoc confirmation includes a
+status for this case, but ath12k currently ignores it and continues
+configuring the peer as though association succeeded. TIP carries a stop-
+gap fix which parses this status and fails the station transition.
+
+An ML peer ID is safe to reuse only after every link peer has been deleted
+from firmware. ath12k currently discards the result of the MLO peer delete
+operation and unconditionally releases a host-allocated ID. It also loses
+cleanup failures while rolling back peer creation. A late or missing peer
+unmap can therefore allow a new station to reuse an ID which firmware still
+owns, matching the duplicate-ID firmware failure described by Qualcomm's
+peer assoc status fix.
+
+Validate both link maps and the current mac80211 link address before
+reporting low ACK. Cross-check a datapath peer, when present, against the
+control-plane station, vdev and link. Keep legacy address checks and the
+existing reason-specific event handling.
 
 Merged from:
   322-ath12k-honor-firmware-ml-peer-id-limit.patch
@@ -14,6 +37,7 @@ Merged from:
 Based on work by:
   JiaY-shi <shi05275@163.com>
 
+Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/core.h

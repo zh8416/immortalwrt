@@ -1,9 +1,13 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Robert Marko <robimarko@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: connect IPQ8074 secure WCSS and WLAN
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Describe the IPQ8074 WCSS remote processor using the secure PIL compatible.
+Add the SMP2P state and interrupt channels needed for startup, shutdown and
+crash handling, and the GLINK edge used by the firmware.
+
+IPQ8074 has a AHB based Q6v5 802.11ax radios that are supported by the
+ath11k.
 
 Merged from:
   0120-arm64-dts-qcom-ipq8074-add-secure-WCSS-remoteproc.patch
@@ -15,6 +19,7 @@ Based on work by:
 Original-commit: 0000000000000000000000000000000000000000
 Original-commit: a67d1901741c162645eda0dbdc3a2c0c2aff5cf4
 
+Signed-off-by: Robert Marko <robimarko@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq8074.dtsi

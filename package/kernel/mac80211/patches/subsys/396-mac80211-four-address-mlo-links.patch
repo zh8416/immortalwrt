@@ -1,9 +1,14 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Felix Fietkau <nbd@nbd.name>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: mac80211: address four-address frames on MLO links
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+A 4-address AP_VLAN always sets A2 to sdata->vif.addr, which on an MLD AP
+is the AP MLD address. For a non-MLO station, A2 must be the link address
+it associated to.
+
+In 4-address mode, ieee80211_build_hdr() and ieee80211_check_fast_xmit()
+set A1 to sdata->deflink.u.mgd.bssid, which is not valid for an MLO
+connection.
 
 Merged from:
   396-wifi-mac80211-use-link-address-as-TA-for-non-MLO-4-a.patch
@@ -15,6 +20,7 @@ Based on work by:
 Original-commit: 6175e271b08823a4f9dc2576092cb5752ee61fcf
 Original-commit: d7034f6fd7b0630f3d70ff9c121a648cb636301b
 
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/net/mac80211/tx.c

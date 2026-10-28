@@ -1,9 +1,20 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Luo Jie <jie.luo@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: implement IPQ5332 common PLL and reference clock topology
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add device tree bindings for the CMN PLL block in IPQ5332 SoC, which shares
+similarities with IPQ9574 but has different output clock frequencies.
+
+The CMN PLL in IPQ5332 SoC produces different output clocks when compared
+to IPQ9574. While most clock outputs match IPQ9574, the ethernet PHY/switch
+(50 Mhz) and PPE clocks (200 Mhz) in IPQ5332 are different.
+
+Add the CMN PLL node required for networking hardware operation on IPQ5332.
+The CMN PLL core runs at 6 GHz on this platform, differing from others like
+IPQ9574.
+
+The xo_board clock is derived from the 48 MHz WiFi output clock (divided by
+2), and not a standalone fixed frequency source.
 
 Merged from:
   2015-01-dt-bindings-clock-qcom-Add-CMN-PLL-support-for-IPQ53.patch
@@ -19,6 +30,7 @@ Original-commit: 5a530992faaa219956c1004c9dc00c359d7ace1e
 Original-commit: 243cf94b46e9c7962ba2818d678aea9a5a6e84cc
 Original-commit: bdb4b6b30ba61da75108a49bfcd2de20d949f248
 
+Signed-off-by: Luo Jie <jie.luo@oss.qualcomm.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/Documentation/devicetree/bindings/clock/qcom,ipq9574-cmn-pll.yaml

@@ -1,9 +1,16 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: dsa: support QCA ethertype tags and switch integration
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The QCA8K header sits in place of the ethertype, so a conduit that finds
+the IP header by parsing past the Ethernet header and VLAN tags cannot
+offload the checksum or TSO of a tagged frame. The IPQ807x EDMA is such a
+conduit for the QCA8337 behind PPE port 1 on the Asus RT-AX89X.
+
+Add change_tag_protocol so a CPU port can select "qca-etype", and set the
+header type in HEADER_CTRL to match. Register access and MIB autocast
+frames carry the type as well: build them with it, and let the tagger drop
+it on receive so the handlers keep their layout.
 
 Merged from:
   0955-02-net-dsa-tag_qca-add-a-variant-behind-an-ethertype.patch
@@ -14,6 +21,7 @@ Based on work by:
 
 Original-commit: 0000000000000000000000000000000000000000
 
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/dsa/qca/qca8k-8xxx.c

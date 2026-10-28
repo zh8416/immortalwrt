@@ -2,8 +2,8 @@ From: ViKing <viking.yfy@qq.com>
 Date: Tue, 27 Oct 2026 09:40:00 +0800
 Subject: [PATCH] net: ethernet: qualcomm: quiesce and resume Direct Switch producers
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Refresh the producer lifecycle follow-up after the bounded DS poll transport.
+Keep teardown, quarantine, callback isolation and bounded producer checks intact.
 
 Merged from:
   0673-net-ethernet-qualcomm-ppe-detach-quarantined-DS-clients.patch
@@ -38,7 +38,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	bool detached;
  	atomic64_t down_desc, up_desc, refilled, released;
  	atomic64_t index_updates, refill_failures;
- 	atomic64_t rx_retries, refill_wakes;
+ 	atomic64_t poll_retries, refill_wakes, tx_deferred;
 @@ -115,7 +117,7 @@
  	bool available;
  
@@ -48,7 +48,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	mutex_unlock(&ppe_ds_lock);
  	return available;
  }
-@@ -369,11 +371,14 @@
+@@ -371,11 +373,14 @@
  	if (done < 0 || filled < 0 || READ_ONCE(ds->faulted)) {
  		ppe_ds_mask(ds);
  		napi_complete_done(napi, 0);
@@ -65,7 +65,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		return budget;
  
  	if (napi_complete_done(napi, done)) {
-@@ -611,7 +616,7 @@
+@@ -621,7 +626,7 @@
  		return ERR_PTR(-EINVAL);
  	mutex_lock(&ppe_ds_lock);
  	provider = ppe_ds_provider;
@@ -74,7 +74,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		goto unlock;
  	dev = provider->ppe_dev->dev;
  	if (!ppe_ds_identity_dma(dev) || !ppe_ds_identity_dma(cfg->wlan_dev)) {
-@@ -750,14 +755,62 @@
+@@ -760,14 +765,62 @@
  }
  EXPORT_SYMBOL_GPL(qcom_ppe_ds_start);
  
@@ -100,7 +100,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	for (i = 0; i < ds->requested_irqs; i++)
 +		free_irq(ds->provider->irqs[ds->ring - 1][i], ds);
 +	ds->requested_irqs = 0;
-+	hrtimer_cancel(&ds->rx_timer);
++	hrtimer_cancel(&ds->poll_timer);
 +	if (ds->napi_enabled) {
 +		napi_disable(&ds->napi);
 +		ds->napi_enabled = false;
@@ -138,7 +138,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	if (ds->stopped || !ds->ever_started)
  		goto unlock;
  	/* Keep installed flows functional through the CPU while quiescing DS. */
-@@ -890,7 +943,7 @@
+@@ -900,7 +953,7 @@
  	int vp;
  
  	mutex_lock(&ds->lock);
@@ -147,7 +147,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		vp = -ESHUTDOWN;
  		goto unlock;
  	}
-@@ -919,7 +972,9 @@
+@@ -929,7 +982,9 @@
  	if (i < 0 || i >= PPE_VP_SLOTS)
  		return -EINVAL;
  	mutex_lock(&ds->lock);
@@ -158,7 +158,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		ret = -ENOENT;
  	else if (direct && (!ds->running || ds->faulted))
  		ret = -ESHUTDOWN;
-@@ -938,6 +993,10 @@
+@@ -948,6 +1003,10 @@
  	if (i < 0 || i >= PPE_VP_SLOTS)
  		return -EINVAL;
  	mutex_lock(&ds->lock);
@@ -169,7 +169,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	if (!(ds->allocated_vps & BIT(i))) {
  		ret = -ENOENT;
  		goto unlock;
-@@ -1057,29 +1116,54 @@
+@@ -1068,29 +1127,54 @@
  	return ret;
  }
  

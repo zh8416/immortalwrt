@@ -1,9 +1,22 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: protect MAC reconfiguration throughout recovery
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Firmware recovery removes the driver's peers and resets num_stations before
+mac80211 has finished reconciling its saved station state. A subsequent
+station removal can therefore decrement the unsigned counter from zero.
+
+During an MLO group recovery, mac80211 can ask ath12k to restore a non-
+transmitting BSS before its transmitting BSS has started. Passing that
+invalid ordering to firmware can cause another firmware failure and leaves
+beacon restoration stuck.
+
+ath12k currently clears ATH12K_FLAG_RECOVERY as soon as the restarted
+firmware reports ready. mac80211 has not restored the vdev and station
+state at that point, so teardown callbacks for objects which only existed
+before the crash can still send stop and delete commands to the fresh
+firmware. Those commands fail and abort the remaining state transition,
+leaving beacon and peer state only partially restored.
 
 Merged from:
   318-ath12k-guard-station-count-during-recovery.patch
@@ -15,6 +28,9 @@ Based on work by:
   Rajat Soni <rajson@qti.qualcomm.com>
   Sriram R <srirrama@qti.qualcomm.com>
 
+Signed-off-by: JiaY-shi <shi05275@163.com>
+Signed-off-by: Sriram R <srirrama@qti.qualcomm.com>
+Signed-off-by: Rajat Soni <rajson@qti.qualcomm.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/core.c

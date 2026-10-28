@@ -1,9 +1,41 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Miaoqing Pan <miaoqing.pan@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: decode and validate monitor descriptors across hardware revisions
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+HAL_TLV_HDR_LEN was using the wrong bitmask; fix it to cover bits [21:10].
+Also drop HAL_SRNG_TLV_HDR_{TAG,LEN} and use the generic TLV header bit
+definitions for TLV32/TLV64 encode/decode to avoid redundant macros.
+
+Change TLV decode helpers to return the TLV value pointer and optionally
+decode tag/len/usrid via out parameters. This allows reusing the helpers
+for DP monitor RX status header TLV parsing and avoids duplicated header
+decoding in callers.
+
+Wi-Fi 7 monitor RX status TLV parsing needs to decode TLV headers and
+advance the pointer with the correct header alignment. Different targets
+use different TLV header layouts (32-bit vs 64-bit), but the HAL ops for
+dp_mon RX status header decode and header alignment were not populated for
+all wifi7 targets.
+
+Wi-Fi 7 monitor status parsing in dp_mon currently assumes a 64-bit TLV
+header and directly decodes tag/len/userid from struct hal_tlv_64_hdr. On
+chips using a 32-bit TLV header (e.g. QCC2072), this causes monitor RX
+status packets to be dropped during TLV parsing.
+
+Validate the pointer to the next RX monitor TLV more strictly by ensuring
+that at least a full TLV header is available within the status buffer
+before continuing TLV parsing.
+
+Monitor mode delivers raw 802.11 frames, not 802.3/Ethernet frames. Setting
+RX_FLAG_8023 for monitor RX is incorrect and can break userspace capture
+and analysis. Do not update this flag in the monitor path to ensure correct
+handling of captured frames.
+
+Do not populate peer and link_id in ieee80211_rx_status for monitor MSDUs.
+
+The default memory profile configures rxdma_monitor_dst_ring_size as 8092,
+which is a typo. The intended value is 8192, consistent with all other ring
+sizes in the table being powers of two.
 
 Merged from:
   127-wifi-ath12k-fix-TLV32-length-mask.patch
@@ -38,6 +70,10 @@ Link: https://patch.msgid.link/20260609064856.547032-3-sushant.butta@oss.qualcom
 Original-commit: 913998f903fb1432c0046c33003db38a9e8bedb1
 Link: https://patch.msgid.link/20260616062342.4079796-1-aaradhana.sahu@oss.qualcomm.com
 
+Signed-off-by: Miaoqing Pan <miaoqing.pan@oss.qualcomm.com>
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Signed-off-by: Sushant Butta <sushant.butta@oss.qualcomm.com>
+Signed-off-by: Aaradhana Sahu <aaradhana.sahu@oss.qualcomm.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/core.c

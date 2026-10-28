@@ -1,9 +1,15 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: own virtual port redirects and RX teardown
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Drive the uplink inject. The previous patch added the primitive that tags a
+received frame with a virtual port as its source and pushes it into the
+PPE; this hooks the wireless receive path so real packets reach it,
+completing the wireless-to-wired offload.
+
+Complete the virtual-port datapath transaction with source-VP-aware scatter
+assembly, an unexpected-punt circuit breaker, and teardown ordering which
+quiesces ingress callbacks before physical EDMA carriers disappear.
 
 Merged from:
   0520-01-net-ethernet-qualcomm-ppe-intercept-virtual-port-uplink.patch
@@ -12,6 +18,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/Kconfig

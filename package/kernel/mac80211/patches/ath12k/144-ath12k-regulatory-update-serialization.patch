@@ -1,9 +1,15 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: serialize and deduplicate regulatory updates
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+ab->new_alpha2 is written under ab->base_lock by the 11d new country code
+event handler ath12k_reg_11d_new_cc_event() and by the SMBIOS BDF parser,
+and read under the same lock by ath12k_update_11d().
+
+Currently ath12k_mac_hw_register() unconditionally sets ab->new_alpha2 to
+firmware. But when ab->new_alpha2 is the same as the country already
+applied at boot time (stored in ab->default_regd), setting it again is
+meaningless. So skip it in that case.
 
 Merged from:
   144-wifi-ath12k-protect-new_alpha2-access-with-base_lock.patch
@@ -18,6 +24,8 @@ Link: https://patch.msgid.link/20260729-ath12k-regd-wait-timeout-v1-3-504aa6e7e9
 Original-commit: e15cfef60d907f6687fa75cb5e9807de225cd1b3
 Link: https://patch.msgid.link/20260729-ath12k-regd-wait-timeout-v1-4-504aa6e7e93c@oss.qualcomm.com
 
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/mac.c

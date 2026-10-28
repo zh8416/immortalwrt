@@ -1,6 +1,6 @@
 From c42b27336eeffd7926a77604cdefcc8918bed926 Mon Sep 17 00:00:00 2001
-From: ViKing <viking.yfy@qq.com>
-Date: Fri, 3 Jul 2026 16:56:02 +0100
+From: Matthew Leach <matthew.leach@collabora.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: fix survey indexing across bands
 
 When running 'iw dev wlan0 survey dump' the values for the channel busy
@@ -31,20 +31,19 @@ After this fix, times are independent:
 Tested-on: wcn7850 hw2.0 PCI WLAN.IOE_HMT.1.1-00018-QCAHMTSWPL_V1.0_V2.0_SILICONZ-1
 
 Fixes: 4f242b1d6996 ("wifi: ath12k: support get_survey mac op for single wiphy")
-Signed-off-by: Matthew Leach <matthew.leach@collabora.com>
 Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
 Link: https://patch.msgid.link/20260703-ath12-survey-band-fix-v3-1-2fb050c2505a@collabora.com
 [fixed ath12k-check issues]
+
+Signed-off-by: Matthew Leach <matthew.leach@collabora.com>
 Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
  drivers/net/wireless/ath/ath12k/core.h |  8 ++-
  drivers/net/wireless/ath/ath12k/mac.c  | 33 +++++++------
  drivers/net/wireless/ath/ath12k/wmi.c  | 68 ++++++++++++++------------
  3 files changed, 62 insertions(+), 47 deletions(-)
-
-Signed-off-by: ViKing <viking.yfy@qq.com>
-
 --- a/drivers/net/wireless/ath/ath12k/core.h
 +++ b/drivers/net/wireless/ath/ath12k/core.h
 @@ -666,7 +666,7 @@

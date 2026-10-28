@@ -1,9 +1,18 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Robert Marko <robimarko@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] soc: qcom: connect IPQ6018 secure WCSS and SMP2P acknowledgments
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The IPQ6018 WCSS firmware is loaded through the secure PIL remoteproc
+driver. Describe the remote processor with its secure PIL compatible and
+provide the firmware name used to locate the WCSS firmware. Enable the
+QDSS_AT clock required while loading that firmware.
+
+IPQ6018 has a AHB based Q6v5 802.11ax radios that are supported by the
+ath11k.
+
+IPQ6018 seem to need different ack mechanism for smp2p messaging. This
+fixes q6v5_wcss remoteproc firmware reloading. Without this first load is
+OK, but subsequent loads would hang and fail to complete.
 
 Merged from:
   0905-arm64-dts-qcom-ipq6018-use-secure-WCSS-remoteproc.patch
@@ -18,6 +27,8 @@ Original-commit: 0000000000000000000000000000000000000000
 Original-commit: 153c74fc80b9f33ed1a50d7790bf6979fdceb370
 Original-commit: d93936f175bd914067df8f63f5fbe6e3b77bb4d2
 
+Signed-off-by: Robert Marko <robimarko@gmail.com>
+Signed-off-by: Mantas Pucka <mantas@8devices.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq6018.dtsi

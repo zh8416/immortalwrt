@@ -1,9 +1,12 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Pavithra R <quic_pavir@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: expose EDMA driver and RPS tuning
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add module params and corresponding functionality for Tx/Rx mitigation
+timer/packet count, napi budget and tx requeue stop.
+
+Add sysctl to configure RPS bitmap for EDMA receive. This bitmap is used to
+configure the set of ARM cores used to receive packets from EDMA.
 
 Merged from:
   0337-net-ethernet-qualcomm-Add-module-parameters-for-driv.patch
@@ -16,6 +19,8 @@ Based on work by:
 Original-commit: eda6fa4f6044cc55dcb4fd6ea384bf2680602667
 Original-commit: 16a5c5c6725c07dcd4af0d565c2110a3d6264e8b
 
+Signed-off-by: Pavithra R <quic_pavir@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/edma.c

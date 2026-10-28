@@ -1,9 +1,18 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: implement L3 hardware flow tables
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add the register and table layouts of the PPE L3 flow engine, taken from
+the SSDK: the router MAC table, the ingress and egress L3 interface tables,
+the public NAT address table, the next hop table, the flow and host tables
+with their independent operation registers, the per-flow hit counters, and
+the flow control registers holding the lookup enable and the hardware flow
+aging timer.
+
+Add the low level accessors of the PPE L3 flow engine, in preparation for
+offloading netfilter flowtables.
+Program default physical-port frame limits before registering the netdev,
+including when userspace leaves the default IP MTU unchanged.
 
 Merged from:
   0506-01-net-ethernet-qualcomm-ppe-add-l3-flow-engine-registers.patch
@@ -12,6 +21,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/Makefile
@@ -108,7 +118,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	free_netdev(netdev);
  	ppe_port_phylink_destroy(port);
  	edma_ctx->netdev_arr[port_id - 1] = NULL;
-@@ -438,10 +473,22 @@
+@@ -438,10 +473,29 @@
  			    port_id, netdev->dev_addr);
  	}
  
@@ -124,6 +134,13 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	if (ret)
 +		goto l3_setup_fail;
 +
++	/* ether_setup() already selects MTU 1500, so netifd need not call
++	 * ndo_change_mtu().  Program the initial L2 limits explicitly.
++	 */
++	ret = ppe_port_set_maxframe(port, netdev->mtu);
++	if (ret)
++		goto l3_setup_fail;
++
  	ret = edma_port_stats_alloc(netdev);
  	if (ret) {
  		netdev_dbg(netdev, "EDMA port stats alloc failed\n");
@@ -132,7 +149,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	}
  
  	/* We expect 'port_id' to correspond to ports numbers on SoC.
-@@ -475,7 +522,10 @@
+@@ -475,7 +529,10 @@
  	edma_port_deconfigure(netdev);
  	edma_ctx->netdev_arr[port_id - 1] = NULL;
  	edma_port_stats_free(netdev);
@@ -785,7 +802,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +#endif
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
 +++ b/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
-@@ -560,6 +560,7 @@
+@@ -561,6 +561,7 @@
  {
  	struct ppe_device *ppe_dev = ppe_port->ppe_dev;
  	int port = ppe_port->port_id;
@@ -793,7 +810,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	u32 reg, val;
  	int ret;
  
-@@ -583,7 +584,53 @@
+@@ -584,7 +585,53 @@
  		return ret;
  
  	val = (addr[3] << 24) | (addr[2] << 16) | (addr[1] << 8) | addr[0];

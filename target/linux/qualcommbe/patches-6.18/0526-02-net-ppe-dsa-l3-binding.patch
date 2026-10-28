@@ -1,9 +1,17 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Akshay Kakatkar <me@kakatkarakshay.dev>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: program complete L3 bindings for DSA flows
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+A flow whose ingress or egress device is a DSA user port behind a PPE
+conduit (the RTL8372N switch on IPQ5332 boards) was rejected, leaving
+routed and NAT'd traffic involving wired LAN clients on the software path
+while the same traffic involving a wireless client already offloads through
+virtual ports.
+
+The PPE table interface does not reliably commit partial register updates.
+The port-to-L3 binding consequently remains invalid, and a VLAN can reach
+its translated VSI without the VSI selecting the L3 interface configured
+for it. Such packets take the L3 no-route action before flow lookup.
 
 Merged from:
   0526-02-net-ethernet-qualcomm-ppe-offload-flows-to-dsa-user-ports.patch
@@ -14,6 +22,7 @@ Based on work by:
 
 Link: https://github.com/openwrt/openwrt/commit/142104bb90b3d7685b2a96f04f29b76cbd1e5ee9
 
+Signed-off-by: Akshay Kakatkar <me@kakatkarakshay.dev>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c

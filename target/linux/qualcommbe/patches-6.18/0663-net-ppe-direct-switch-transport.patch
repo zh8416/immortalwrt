@@ -1,9 +1,11 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: implement Direct Switch ring transport
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Batch uplink completion interrupts with the bounded index/refill poll timer.
+Restore level-triggered completion interrupts after an empty poll so idle
+transports do not spin and new bursts cannot lose their wakeup. Preserve
+the shared-ring ownership, fault handling and WLAN metadata validation.
 
 Merged from:
   0663-net-ethernet-qualcomm-ppe-add-direct-switch-ring-transport.patch
@@ -17,6 +19,7 @@ Based on work by:
 Link: https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-dp/-/tree/23928147cfb6f55638cc0a27f700831623ed679c
 Link: https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-ppe/-/tree/d53eff24bf257a8bb1b2f68beb3aa06332bfd567
 
+Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq5332.dtsi
@@ -138,7 +141,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	.remove = qcom_ppe_remove,
 --- /dev/null
 +++ b/drivers/net/ethernet/qualcomm/ppe/ppe_ds.c
-@@ -0,0 +1,1085 @@
+@@ -0,0 +1,1096 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Native PPE Direct Switch ring transport.
 + *
@@ -198,7 +201,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	.get = param_get_uint,
 +};
 +module_param_cb(ds_rx_retry_us, &ppe_ds_rx_retry_ops, &ds_rx_retry_us, 0644);
-+MODULE_PARM_DESC(ds_rx_retry_us, "Direct Switch RX index retry delay (100-1000 us)");
++MODULE_PARM_DESC(ds_rx_retry_us, "Direct Switch index/refill and completion poll delay (100-1000 us)");
 +
 +enum ppe_ds_irq {
 +	PPE_DS_RX,
@@ -221,7 +224,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	spinlock_t index_lock; /* Serialize cross-engine index publication. */
 +	struct net_device *napi_dev;
 +	struct napi_struct napi;
-+	struct hrtimer rx_timer;
++	struct hrtimer poll_timer;
 +	struct edma_rxfill_desc *fill;
 +	struct edma_txcmpl_desc *complete;
 +	void *rx_secondary;
@@ -238,7 +241,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	bool refill_short;
 +	atomic64_t down_desc, up_desc, refilled, released;
 +	atomic64_t index_updates, refill_failures;
-+	atomic64_t rx_retries, refill_wakes;
++	atomic64_t poll_retries, refill_wakes, tx_deferred;
 +};
 +
 +/* Registration and supplier teardown are serialized. A registered WLAN
@@ -484,15 +487,17 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 + * asserted until TCL consumes the entries, even after we publish its HP.
 + * Keep that interrupt masked while ownership is with WLAN, as QSDK does.
 + * A bounded retry hands off indices and retries a depleted buffer pool
-+ * without an IRQ for each stalled entry or a tight NAPI loop;
-+ * the callback only schedules NAPI and never takes a WLAN window lock.
++ * without an IRQ for each stalled entry or a tight NAPI loop. The same
++ * timer batches TX completions while uplink traffic is active; an empty
++ * completion poll restores the level interrupt for the next burst.
++ * The callback only schedules NAPI and never takes a WLAN window lock.
 + */
-+static enum hrtimer_restart ppe_ds_rx_retry(struct hrtimer *timer)
++static enum hrtimer_restart ppe_ds_poll_retry(struct hrtimer *timer)
 +{
-+	struct qcom_ppe_ds *ds = container_of(timer, struct qcom_ppe_ds, rx_timer);
++	struct qcom_ppe_ds *ds = container_of(timer, struct qcom_ppe_ds, poll_timer);
 +
 +	if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted)) {
-+		atomic64_inc(&ds->rx_retries);
++		atomic64_inc(&ds->poll_retries);
 +		napi_schedule(&ds->napi);
 +	}
 +	return HRTIMER_NORESTART;
@@ -518,6 +523,8 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +		return budget;
 +
 +	if (napi_complete_done(napi, done)) {
++		bool retry_rx, defer_tx = done > 0;
++
 +		spin_lock_irqsave(&ds->index_lock, flags);
 +		if (READ_ONCE(ds->running) && !READ_ONCE(ds->faulted)) {
 +			ppe_ds_read(ds, EDMA_REG_RXDESC_INT_STAT(ds->ring));
@@ -527,15 +534,21 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +			 * Arrivals racing an empty-ring check assert the level IRQ
 +			 * when it is unmasked; pending entries instead get a retry.
 +			 */
-+			if (ds->rx_prod == ds->rx_cons && !ds->refill_short)
-+				ppe_ds_write(ds, EDMA_REG_RXDESC_INT_MASK(ds->ring), 1);
-+			else {
-+				ppe_ds_write(ds, EDMA_REG_RXDESC_INT_MASK(ds->ring), 0);
-+				hrtimer_start(&ds->rx_timer,
++			retry_rx = ds->rx_prod != ds->rx_cons || ds->refill_short;
++			ppe_ds_write(ds, EDMA_REG_RXDESC_INT_MASK(ds->ring), !retry_rx);
++			/* Repeated short uplink batches otherwise generate an IRQ
++			 * and a full WLAN/EDMA index handoff every few packets.
++			 * Keep TX masked for one bounded poll interval after work.
++			 * If the next poll is empty, unmasking the level IRQ also
++			 * catches completions racing the empty-ring check.
++			 */
++			ppe_ds_write(ds, EDMA_REG_TX_INT_MASK(ds->ring), !defer_tx);
++			if (defer_tx)
++				atomic64_inc(&ds->tx_deferred);
++			if (retry_rx || defer_tx)
++				hrtimer_start(&ds->poll_timer,
 +					      ns_to_ktime(READ_ONCE(ds_rx_retry_us) * NSEC_PER_USEC),
 +					      HRTIMER_MODE_REL);
-+			}
-+			ppe_ds_write(ds, EDMA_REG_TX_INT_MASK(ds->ring), 1);
 +			if (!ds->refill_short)
 +				ppe_ds_write(ds, EDMA_REG_RXFILL_INT_MASK(ds->ring),
 +					     PPE_DS_RXFILL_LOW_IRQ);
@@ -780,7 +793,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	ds->queue = PPE_DS_QUEUE_BASE + node * PPE_DS_QUEUES;
 +	mutex_init(&ds->lock);
 +	spin_lock_init(&ds->index_lock);
-+	hrtimer_setup(&ds->rx_timer, ppe_ds_rx_retry, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	hrtimer_setup(&ds->poll_timer, ppe_ds_poll_retry, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 +	ds->napi_dev = alloc_netdev_dummy(0);
 +	if (!ds->napi_dev) {
 +		ret = -ENOMEM;
@@ -921,7 +934,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	spin_unlock_irqrestore(&ds->index_lock, flags);
 +	for (i = 0; i < ds->requested_irqs; i++)
 +		synchronize_irq(ds->provider->irqs[ds->ring - 1][i]);
-+	hrtimer_cancel(&ds->rx_timer);
++	hrtimer_cancel(&ds->poll_timer);
 +	if (ds->napi_enabled) {
 +		napi_disable(&ds->napi);
 +		ds->napi_enabled = false;
@@ -986,7 +999,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	spin_unlock_irqrestore(&ds->index_lock, flags);
 +	for (i = 0; i < ds->requested_irqs; i++)
 +		synchronize_irq(ds->provider->irqs[ds->ring - 1][i]);
-+	hrtimer_cancel(&ds->rx_timer);
++	hrtimer_cancel(&ds->poll_timer);
 +	if (ds->napi_enabled) {
 +		napi_disable(&ds->napi);
 +		ds->napi_enabled = false;
@@ -1109,13 +1122,14 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +		}
 +		seq_printf(seq, "node:%d ring:%u queue:%u running:%u faulted:%u "
 +			   "down_desc:%lld up_desc:%lld refill:%lld release:%lld "
-+			   "sync:%lld refill_fail:%lld rx_retry:%lld refill_wake:%lld\n",
++			   "sync:%lld refill_fail:%lld poll_retry:%lld refill_wake:%lld tx_deferred:%lld\n",
 +			   i, ds->ring, ds->queue,
 +			   READ_ONCE(ds->running), READ_ONCE(ds->faulted),
 +			   atomic64_read(&ds->down_desc), atomic64_read(&ds->up_desc),
 +			   atomic64_read(&ds->refilled), atomic64_read(&ds->released),
 +			   atomic64_read(&ds->index_updates), atomic64_read(&ds->refill_failures),
-+			   atomic64_read(&ds->rx_retries), atomic64_read(&ds->refill_wakes));
++			   atomic64_read(&ds->poll_retries), atomic64_read(&ds->refill_wakes),
++			   atomic64_read(&ds->tx_deferred));
 +	}
 +	mutex_unlock(&ppe_ds_lock);
 +	return 0;

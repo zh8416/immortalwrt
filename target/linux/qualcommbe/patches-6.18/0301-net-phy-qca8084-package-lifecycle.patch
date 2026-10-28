@@ -1,9 +1,37 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Luo Jie <quic_luoj@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: phy: qca8084: implement package probing and initialization
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+QCA8084 is quad PHY chip, which integrates 4 PHYs, 2 PCS interfaces (PCS0
+and PCS1) and clock controller, which can also be integrated to the switch
+chip named as QCA8386.
+
+Add QCA8084 Quad-PHY support, which is a four-port PHY with maximum link
+capability of 2.5 Gbps. The features of each port are almost same as
+QCA8081. The slave seed and fast retrain configs are not needed for
+QCA8084. It includes two PCSes.
+
+1. The ADC of QCA8084 PHY must be configured as edge inverted and falling
+whenever it is initialized or reset. In addition, the default MSE (Mean
+square error) threshold value is adjusted, which comes into play during
+link partner detection to detect the valid link signal.
+
+When the link is changed, QCA8084 needs to do the fifo reset and adjust the
+IPG level for the 10G-QXGMII link on the speed 1000M.
+
+QCA8084 integrates clock controller and security control modules besides of
+the PHY and PCS. The 32bit registers in these modules are accessed using
+special MDIO sequences to read or write these registers.
+
+Add the PHY package probe function. The MDIO slave address of PHY, PCS and
+XPCS can be optionally customized by configuring the PHY package level
+register.
+
+Parse the PHY package clocks from the PHY package DTS node. These package
+level clocks will be enabled in the PHY package init function.
+
+The package mode of PHY is configured for the interface mode of two PCSes
+working correctly.
 
 Merged from:
   0301-dt-bindings-net-Document-Qualcomm-QCA8084-PHY-packag.patch
@@ -28,6 +56,8 @@ Original-commit: 5f58d9c84d96c6427e31373fe2b13eb8f6975769
 Original-commit: 3d5e5c940f98e6c627afe57123c4765c9306ca50
 Original-commit: 7da15e71be92f1db476f631642cd1eb590102a43
 
+Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- /dev/null

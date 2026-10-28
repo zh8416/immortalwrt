@@ -1,9 +1,21 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: manage virtual port and netdevice lifetime
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+A virtual port is a PPE port number past the physical ones, bound to a net
+device the PPE cannot reach directly - a wireless VAP. It lets the L3 flow
+engine forward to such a device: the flow is forwarded to the virtual port,
+whose L2_VP_PORT_TBL entry points its physical port at the CPU and its
+unicast queue at the CPU port's queue, so the packet is delivered to the
+host on an EDMA ring already rewritten, to be transmitted out the device.
+
+Register a net device notifier for the virtual ports. When a bound device
+unregisters, force its virtual port down and clear the registry so the
+receive path drops the stale pointer before the device is freed; any flows
+still referencing the port release it harmlessly once they are torn down.
+When a bound device's link changes, update the flowtable carrier so a flow
+to a down device stops refreshing its conntrack, the same stuck-flow guard
+the physical ports use.
 
 Merged from:
   0517-01-net-ethernet-qualcomm-ppe-add-virtual-ports.patch
@@ -12,6 +24,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/Makefile

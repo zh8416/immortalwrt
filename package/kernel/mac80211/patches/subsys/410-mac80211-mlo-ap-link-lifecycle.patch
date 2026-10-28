@@ -1,9 +1,23 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Felix Fietkau <nbd@nbd.name>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: mac80211: preserve active AP links and MBSSID lifetime
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Since stop_ap works per link, ___cfg80211_stop_ap() stops one link of an AP
+MLD, but clears state that belongs to the interface: the connection owner,
+the SSID and the QoS map. The other links keep beaconing with an empty SSID
+in NL80211_CMD_GET_INTERFACE and no DSCP to user priority map, until the
+next START_AP on some link sets them again.
+
+Since stop_ap works per link, ieee80211_stop_ap() stops one link of an AP
+MLD, but turns off the carrier of every AP_VLAN of the interface and clears
+interface state: the SSID, the S1G flag and the beacon rate flag. A
+4-address station on another link loses the carrier of its AP_VLAN, and
+with it its bridge port, whenever any link stops.
+
+ieee80211_stop_ap() stops one link, but calls ieee80211_stop_mbssid(),
+which walks every active link of the interface. The stop of one link of an
+AP MLD thus takes apart the MBSSID set of each other link and stops the
+interfaces of those sets, on radios that keep running.
 
 Merged from:
   410-wifi-cfg80211-keep-the-interface-state-while-another-AP-link-beacons.patch
@@ -16,6 +30,7 @@ Based on work by:
 Original-commit: ce8ef1122015eea58c300485a330320985a27a19
 Original-commit: 73a2d8189877717fc31ce69167a38cc02197a1d0
 
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/net/mac80211/cfg.c

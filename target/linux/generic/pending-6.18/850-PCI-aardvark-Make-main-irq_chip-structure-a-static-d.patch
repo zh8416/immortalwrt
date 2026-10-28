@@ -1,5 +1,5 @@
 From 663b9f99bb35dbc0c7b685f71ee3668a60d31320 Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Marek=20Beh=C3=BAn?= <kabel@kernel.org>
+From: ViKing <viking.yfy@qq.com>
 Date: Mon, 10 Jan 2022 02:02:00 +0100
 Subject: [PATCH] PCI: aardvark: Make main irq_chip structure a static driver
  structure
@@ -31,6 +31,8 @@ Signed-off-by: Marek Behún <kabel@kernel.org>
  drivers/pci/controller/pci-aardvark.c | 25 +++++++------------------
  1 file changed, 7 insertions(+), 18 deletions(-)
 
+Original-author: =?UTF-8?q?Marek=20Beh=C3=BAn?= <kabel@kernel.org>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 --- a/drivers/pci/controller/pci-aardvark.c
 +++ b/drivers/pci/controller/pci-aardvark.c
 @@ -277,7 +277,6 @@ struct advk_pcie {

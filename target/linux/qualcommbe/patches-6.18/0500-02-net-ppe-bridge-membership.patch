@@ -1,9 +1,23 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: implement bridge membership and switchdev setup
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add the low level helpers for driving the PPE L2 bridge, in preparation for
+offloading software bridges: VSI (virtual switch instance) membership, port
+to VSI binding, per-VSI egress tag modes, the bridge TX MAC, the per-port
+spanning tree state and the hardware FDB.
+
+Packets received from a port bridged in hardware must not be forwarded
+again by the software bridge to other ports of the same switch. Mark them
+with offload_fwd_mark when the port is flagged as offloaded, and report a
+common parent switch ID on all PPE ports, so the bridge can tell which
+ports the hardware has already covered while still forwarding to its
+software ports, such as wireless interfaces.
+
+Offload software bridging of the PPE port net devices to the PPE L2 bridge.
+Each offloaded VLAN-unaware bridge is backed by a VSI (virtual switch
+instance): ports joined to the bridge are bound to its VSI, and the
+hardware then learns and forwards within the VSI on its own.
 
 Merged from:
   0500-02-net-ethernet-qualcomm-ppe-add-l2-bridge-config-helpers.patch
@@ -13,6 +27,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/Kconfig

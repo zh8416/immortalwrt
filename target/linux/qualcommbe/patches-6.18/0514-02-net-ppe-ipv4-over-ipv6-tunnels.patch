@@ -1,9 +1,16 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: implement IPIP6 and DS-Lite tunnel rows
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Encode the vendor IPIP6 decapsulation key and encapsulation template,
+configure global key generation, and expose a verified decapsulation enable
+operation. Keeping enable separate lets the object transaction publish
+lookup only after every dependent row has verified.
+
+Resolve fixed ip6tnl endpoints through the IPv6 underlay and publish a
+refcounted tunnel object shared by both flow directions. Underlay ports
+share their single tunnel-L3 binding, while each endpoint pair owns its
+decap row, encap template and dedicated tunnel VP.
 
 Merged from:
   0514-05-net-ethernet-qualcomm-ppe-build-ipip6-tunnel-rows.patch
@@ -12,6 +19,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c

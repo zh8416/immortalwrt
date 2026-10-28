@@ -1,9 +1,21 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Manikanta Mylavarapu <manikanta.mylavarapu@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: describe IPQ9574 radio and WSI resources
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Enable nodes required for q6 remoteproc bring up.
+
+Describe the IPQ9574-family WLAN register window and named interrupts
+observed on the Linksys LN6001. Connect the AHB device to the WCSS remote
+processor using the upstream ath11k binding.
+
+Add the IPQ9574 compatible proposed for ath11k support. Describe its
+interrupt layout separately from IPQ8074 and IPQ6018: the observed
+IPQ9574-family interface omits the watchdog interrupt and provides a fourth
+transmit-completion ring. Both layouts contain 52 interrupts.
+
+QCN9274 supports single-PHY and split-PHY configurations. Some fixed split-
+PHY designs do not identify that configuration through the OTP board
+identifier.
 
 Merged from:
   2013-01-arm64-dts-qcom-ipq9574-add-nodes-to-bring-up-q6.patch
@@ -22,6 +34,11 @@ Link: https://lore.kernel.org/r/20260713-rproc-v13-6-41011cbcda3e@oss.qualcomm.c
 Original-commit: 0000000000000000000000000000000000000000
 Link: https://lists.infradead.org/pipermail/ath11k/2026-January/008112.html
 
+Signed-off-by: Manikanta Mylavarapu <manikanta.mylavarapu@oss.qualcomm.com>
+Signed-off-by: Gokul Sriram Palanisamy <gokul.sriram.p@oss.qualcomm.com>
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
+Signed-off-by: Varadarajan Narayanan <varadarajan.narayanan@oss.qualcomm.com>
+Signed-off-by: Satoshi Ikeuchi <satosan.ikm@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/Documentation/devicetree/bindings/net/wireless/qcom,ath11k.yaml

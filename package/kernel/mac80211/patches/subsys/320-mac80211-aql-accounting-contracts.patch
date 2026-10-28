@@ -1,9 +1,15 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: mac80211: account broadcast AQL and expose pending TXQ airtime
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Excessive broadcast traffic with little competing unicast traffic can
+easily flood hardware queues, leading to throughput issues. Additionally,
+filling the hardware queues with too many packets breaks FQ for broadcast
+data. Fix this by enabling AQL for broadcast packets.
+
+Add a function to allow drivers to query the pending AQL airtime for a
+given txq, for both unicast and broadcast. This will be used for mt76 to
+limit buffering in AP mode for power-save stations.
 
 Merged from:
   320-mac80211-add-AQL-support-for-broadcast-packets.patch
@@ -12,6 +18,7 @@ Merged from:
 Based on work by:
   Felix Fietkau <nbd@nbd.name>
 
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/include/net/cfg80211.h

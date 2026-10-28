@@ -1,9 +1,48 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Felix Fietkau <nbd@nbd.name>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: mac80211: report per-link station rates and counters
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+cfg80211_sta_set_mld_sinfo() takes the TX and RX rate of an MLO station
+from the link with the least inactive time. The inactive time block before
+it has already stored this link's value as the least one when it is, so the
+comparison against it never holds after the first link. The first link then
+decides alone, and where that link reports no rate the station reports
+none.
+
+Since nl80211_dump_station() builds the aggregated message with
+nl80211_put_sta_info_common() instead of nl80211_send_station(), a station
+dump no longer carries NL80211_ATTR_MLD_ADDR and NL80211_ATTR_MLO_LINK_ID,
+while NL80211_CMD_GET_STATION for one station still does. Userspace that
+dumps the stations of an AP MLD can then no longer tell an MLO station from
+a legacy one, nor its association link.
+
+sta_set_link_sinfo() converts the last TX rate of a link with
+sta_set_rate_info_tx(), which takes the band of a legacy rate from
+ieee80211_get_sband(). That function warns on an MLD interface, and the
+band it returns is not the band of the link.
+
+mac80211 books the TX bytes and packets of an MLO station on the default
+link, because it counts a frame before the driver selects the link, and the
+last TX rate there too, because a TX status names no link. A driver that
+selects the link can keep these per link and report them from its
+link_sta_statistics callback, but it has no way to convert the TX rate it
+recorded to the rate info that cfg80211 reports.
+
+When a link of an MLO station is removed,
+sta_accumulate_removed_link_stats() adds mac80211's own counters of the
+link to rem_link_stats, which then stands for the removed links in the
+station totals. mac80211 books the TX of an MLO station on the default link
+alone, so a driver that reports the TX counters of each link from
+link_sta_statistics, as sta_set_link_sinfo() prefers, makes the totals
+wrong at the removal: removing the default link adds the TX of every link
+once more, and removing another link drops its TX from the totals, which
+then fall.
+
+mac80211 books every frame to an MLO station on the default link, so a per-
+link station dump shows all TX bytes, packets and the TX rate on the
+association link, and none on the other links, whichever link carried the
+frames. Userspace that compares the links of a station, for example to
+report the metrics of each affiliated station, then reads wrong values.
 
 Merged from:
   414-wifi-cfg80211-take-the-MLO-station-rates-from-the-links-that-report-them.patch
@@ -16,6 +55,7 @@ Merged from:
 Based on work by:
   Felix Fietkau <nbd@nbd.name>
 
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/virtual/mac80211_hwsim_i.h

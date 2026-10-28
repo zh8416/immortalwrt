@@ -1,9 +1,18 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: George Moussalem <george.moussalem@outlook.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] remoteproc: qcom: complete secure WCSS firmware startup
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The driver currently expects only one firmware file to be loaded as part of
+bringing up WCSS. For IPQ5018 and QCN6122, multiple firmware files are
+required, both the q6 and m3 firmware files. As such, add support for
+loading up to 3 firmware files.
+
+The IPQ8074 WCSS secure PIL requires the PRNG clock while the remote
+processor is running. Acquire and enable the optional PRNG clock at probe,
+using the same managed clock handling as the sleep and interconnect clocks.
+
+Match the IPQ8074 WCSS secure PIL node and use the same PAS ID and
+subsystem name as IPQ9574.
 
 Merged from:
   0808-remoteproc-qcom-wcss-sec-add-split-firmware-support.patch
@@ -16,6 +25,8 @@ Based on work by:
 
 Original-commit: 0000000000000000000000000000000000000000
 
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
+Signed-off-by: Robert Marko <robimarko@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/remoteproc/qcom_q6v5_wcss_sec.c

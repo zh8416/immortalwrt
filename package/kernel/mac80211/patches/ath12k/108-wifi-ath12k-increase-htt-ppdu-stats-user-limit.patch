@@ -1,5 +1,5 @@
 From: Hariharan Ramanathan <quic_hramanat@quicinc.com>
-Date: Tue, 15 Apr 2025 18:45:34 +0530
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: increase HTT PPDU stats user limit
 
 HTT_PPDU_STATS_MAX_USERS includes a spare entry because the PPDU parser
@@ -13,10 +13,10 @@ valid multi-user PPDU reports from QCN9274 firmware.
 
 Signed-off-by: Sowjanya vardhineni <quic_svardhin@quicinc.com>
 Signed-off-by: Hariharan Ramanathan <quic_hramanat@quicinc.com>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
  drivers/net/wireless/ath/ath12k/dp_htt.h | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
-
 --- a/drivers/net/wireless/ath/ath12k/dp_htt.h
 +++ b/drivers/net/wireless/ath/ath12k/dp_htt.h
 @@ -1279,7 +1279,7 @@ struct htt_ppdu_user_stats {

@@ -1,9 +1,18 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: dsa: retain VLAN upper filtering and QCA 8021Q transport
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+VLAN taggers need upper membership even while a port is in a VLAN-unaware
+bridge or has just left a VLAN-aware bridge. Add an opt-in capability,
+which the driver sets when it switches to such a tagger, to retain upper
+filtering across those transitions. Do not replay existing upper
+memberships and inflate their CPU references. For a driver that opts in,
+and so keeps uppers apart from bridge VLANs, also remove the user port's
+upper membership when the subsequent CPU VLAN add fails.
+
+Under qca-8021q every port filters by VLAN, so the switch drops the frames
+of an 802.1Q upper of a user port, such as wan.35 for a PPPoE ISP, and the
+tagger stacks the port's tag_8021q VLAN in front of the upper's own tag.
 
 Merged from:
   0963-net-dsa-retain-VLAN-upper-filtering-for-VLAN-taggers.patch
@@ -14,6 +23,9 @@ Based on work by:
   Julius Bairaktaris <julius@bairaktaris.de>
   Stanislaw Pal <kuncy7@gmail.com>
 
+Signed-off-by: Adriel Santos <adriel@adriel.eu>
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
+Signed-off-by: Stanislaw Pal <kuncy7@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/dsa/qca/qca8k-8xxx.c

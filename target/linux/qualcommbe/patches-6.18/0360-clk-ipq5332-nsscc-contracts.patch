@@ -1,9 +1,12 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: define IPQ5332 NSS clock reset and interconnect contracts
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add NSSCC clock and reset definitions for Qualcomm IPQ5332. Enable
+interconnect provider ability for use by the ethernet driver.
+
+Update the GCC master/slave list to include couple of more interfaces
+needed by the Network Subsystem Clock Controller (NSSCC)
 
 Merged from:
   0360-dt-bindings-clock-add-qualcomm-ipq5332-nsscc-clock-and-reset-definitions.patch
@@ -14,6 +17,8 @@ Based on work by:
   Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
   Varadarajan Narayanan <quic_varada@quicinc.com>
 
+Signed-off-by: Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
+Signed-off-by: Varadarajan Narayanan <quic_varada@quicinc.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- /dev/null

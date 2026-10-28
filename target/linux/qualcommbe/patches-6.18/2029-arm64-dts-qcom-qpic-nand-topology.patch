@@ -1,9 +1,24 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Md Sadre Alam <quic_mdalam@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: configure IPQ5332 and IPQ5424 QPIC NAND topology
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add device tree nodes for QPIC SPI NAND flash controller support on IPQ5424
+SoC.
+
+Add device tree nodes for QPIC SPI NAND flash controller support on IPQ5332
+SoC.
+
+Enable QPIC SPI NAND flash controller support on the IPQ5424 RDP466
+reference design platform.
+
+Enable QPIC SPI NAND flash controller support on the IPQ5332 reference
+design platform.
+
+Remove eMMC support from the IPQ5424 RDP466 board configuration to resolve
+GPIO pin conflicts with SPI NAND interface.
+
+Remove eMMC support from the IPQ5332 RDP442 board configuration to align
+with the board's default NOR+NAND boot mode design.
 
 Merged from:
   2029-01-arm64-dts-qcom-ipq5424-Add-QPIC-SPI-NAND-controller-.patch
@@ -23,6 +38,7 @@ Original-commit: 65cd6ce0b523b2dbcbdeb31ff76d9f575186cf1f
 Original-commit: dcadd342229a26cacff72e7c441243844c2b7010
 Original-commit: 8b8cbee6aec361bfa363a7ab45cb3259330289fe
 
+Signed-off-by: Md Sadre Alam <quic_mdalam@quicinc.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq5332-rdp-common.dtsi

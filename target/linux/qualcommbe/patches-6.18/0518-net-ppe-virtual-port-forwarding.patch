@@ -1,9 +1,20 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: offload and deliver virtual port flows
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Offload the wired-to-wireless direction of a routed or NAT'd flow whose
+egress net device is not a PPE port, by forwarding it to a virtual port.
+The egress source MAC rewrite is programmed on an L3 interface reserved for
+the virtual port, past the physical, PPPoE and VLAN-uplink ones, and the
+next hop carries the virtual port as the egress port. The packet is
+delivered to the host already rewritten, for transmit out the device by the
+receive path that follows.
+
+A flow forwarded to a virtual port arrives on an EDMA receive ring with the
+virtual port in the descriptor's destination info. Recognize it, resolve
+the bound net device and transmit the already-rewritten frame out of it
+instead of receiving it up the stack. The frame is complete and NAT'd, so
+it only needs handing to the device's transmit path.
 
 Merged from:
   0518-01-net-ethernet-qualcomm-ppe-offload-flows-to-virtual-ports.patch
@@ -12,6 +23,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/edma.c

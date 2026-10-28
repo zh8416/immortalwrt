@@ -1,9 +1,13 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Robert Marko <robimarko@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] remoteproc: qcom: enable IPQ6018 WCSS and optional QDSS clocks
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Enable the optional QDSS clock while the secure WCSS remote processor is
+running. Some platforms require this clock for WCSS firmware loading.
+
+IPQ6018 uses the secure WCSS PIL remoteproc driver, but its SSR subsystem
+name is "wcnss" rather than the "q6wcss" name used by IPQ9574. Add a
+dedicated descriptor for IPQ6018 and match its WCSS compatible to it.
 
 Merged from:
   0811-02-remoteproc-qcom-wcss-sec-enable-qdss-clock.patch
@@ -14,6 +18,7 @@ Based on work by:
 
 Original-commit: 0000000000000000000000000000000000000000
 
+Signed-off-by: Robert Marko <robimarko@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/remoteproc/qcom_q6v5_wcss_sec.c

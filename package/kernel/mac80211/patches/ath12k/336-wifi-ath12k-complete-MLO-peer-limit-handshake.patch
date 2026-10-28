@@ -1,5 +1,5 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Thu, 27 Aug 2026 15:10:00 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: complete MLO peer limit handshake
 
 Recent firmware reports its per-device ML peer capacity in the WMI ready
@@ -14,9 +14,8 @@ legacy ready layout, keep the original 12-byte MLO setup fixed TLV instead
 of appending a field that old firmware does not know about.
 
 Signed-off-by: JiaY-shi <shi05275@163.com>
----
 Signed-off-by: ViKing <viking.yfy@qq.com>
-
+---
 --- a/drivers/net/wireless/ath/ath12k/core.h
 +++ b/drivers/net/wireless/ath/ath12k/core.h
 @@ -1178,6 +1178,10 @@

@@ -1,9 +1,14 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: mac80211: estimate expected throughput when the driver omits it
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Create ieee80211_rate_expected_tx_airtime helper function, which returns
+the expected tx airtime for a given rate and packet length in units of 1024
+usec, for more accuracy.
+
+Estimate the tx throughput based on the expected per-packet tx time. This
+is useful for mesh implementations that rely on expected throughput, e.g.
+802.11s or batman-adv.
 
 Merged from:
   360-mac80211-factor-out-part-of-ieee80211_calc_expected_.patch
@@ -12,6 +17,7 @@ Merged from:
 Based on work by:
   Felix Fietkau <nbd@nbd.name>
 
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/net/mac80211/airtime.c

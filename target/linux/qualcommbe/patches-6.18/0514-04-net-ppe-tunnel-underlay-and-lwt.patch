@@ -1,9 +1,15 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: compose tunnel underlays and LWT routes
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Build the IP-in-IPv6 outer header from the routed forward path, including
+one outer 802.1Q tag and an optional PPPoE session. Share the tunnel L3
+interface at the physical port for Ethernet/VLAN underlays, or attach it to
+the existing lifecycle-owned PPPoE session as the vendor transaction does.
+
+Consume the generic flow action's LWT type, TX tunnel key and reversed
+encapsulated-address match to publish fixed IPv4-in-IPv6 LWT flows through
+the PPE tunnel transaction.
 
 Merged from:
   0514-08-net-ethernet-qualcomm-ppe-compose-tunnel-underlays.patch
@@ -12,6 +18,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c

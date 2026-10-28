@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Sricharan Ramabadhran <quic_srichara@quicinc.com>
+From: ViKing <viking.yfy@qq.com>
 Date: Thu, 27 Mar 2025 23:47:50 +0530
 Subject: [PATCH] mailbox: qcom: share the TME-L QMP client header
 
@@ -12,6 +12,8 @@ Signed-off-by: Sricharan Ramabadhran <quic_srichara@quicinc.com>
 [Split the unchanged client header from the mailbox driver patch.]
 Signed-off-by: Satoshi Ikeuchi <satosan.ikm@gmail.com>
 ---
+Original-author: Sricharan Ramabadhran <quic_srichara@quicinc.com>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 --- /dev/null
 +++ b/include/linux/mailbox/tmelcom-qmp.h
 @@ -0,0 +1,65 @@

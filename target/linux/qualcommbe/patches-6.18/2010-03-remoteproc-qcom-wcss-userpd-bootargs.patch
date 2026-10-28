@@ -1,5 +1,5 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 12:46:53 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] remoteproc: qcom: prepare UserPD boot metadata before loading WCSS
 
 Keep validated ELF metadata, the MDT file-size API and shared-memory UserPD boot arguments in one firmware-startup unit.
@@ -8,6 +8,7 @@ Split from:
   2010-02-remoteproc-qcom-secure-wcss-startup-signaling.patch
 Original-patch: 2010-03-remoteproc-qcom-wcss-refresh-userpd-bootargs.patch
 
+Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/remoteproc/qcom_q6v5_wcss_sec.c

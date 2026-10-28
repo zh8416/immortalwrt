@@ -1,9 +1,21 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: George Moussalem <george.moussalem@outlook.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] usb: dwc3: qcom: complete reference clocks and controller layout
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add ability to pass the reference clock rate from the glue layer to the
+DWC3 core driver. The core calculates the reference clock period and frame
+length adjustment based on the reference clock rate.
+
+On many Qualcomm chipsets, the UTMI clock is used as the reference clock
+(ex. IPQ5018, IPQ6018, and IPQ9574 and more). Since moving to the new
+flattened snps-dwc3 model, it is no longer possible to pass the reference
+clock to the dwc3 core driver.
+
+Flatten usb controller node and update to using latest bindings and
+flattened driver approach.
+
+Flatten usb controller nodes and update to using latest bindings and
+flattened driver approach.
 
 Merged from:
   0140-usb-dwc3-core-Allow-glue-layer-to-pass-reference-clo.patch
@@ -19,6 +31,9 @@ Based on work by:
 Original-commit: 93a8fd3d8d04be9935a2897ef90e7f1100e69830
 Original-commit: f598a5a7837caa3daef086fb42534572e4e9b540
 
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
+Signed-off-by: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Signed-off-by: Bjorn Andersson <andersson@kernel.org>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq5018-rdp432-c2.dts

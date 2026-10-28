@@ -1,9 +1,16 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: recover AHB UserPD failures and independent reloads
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The IPQ5332 DT exposes a UserPD fatal interrupt but ath12k only requests
+spawn, ready and stop-ack. Consequently a UserPD-only failure is noticed
+only after QMI or a WSI partner fails, losing the first crash indication
+and leaving the hardware group on stale shared state.
+
+The IPQ5332 1.6 firmware uses the QSDK configuration with multi-PD
+remoteproc disabled. Its q6_fw1.mdt is a standalone UserPD image and does
+not contain the ASID-tagged writable segments required by the legacy BDMA
+loader, so that loader must not be used for this firmware.
 
 Merged from:
   330-ath12k-handle-AHB-userPD-fatal-IRQ.patch
@@ -12,6 +19,7 @@ Merged from:
 Based on work by:
   JiaY-shi <shi05275@163.com>
 
+Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/ahb.c

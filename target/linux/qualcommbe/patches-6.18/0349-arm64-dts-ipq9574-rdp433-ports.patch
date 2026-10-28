@@ -1,9 +1,16 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Lei Wei <quic_leiwei@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: describe RDP433 ports and MAC storage
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+There are 6 PPE MAC ports available on RDP433. The port1-port4 are
+connected with QCA8075 QUAD PHYs through UNIPHY0 PCS channel0-channel3. The
+port5 is connected with Aquantia PHY through UNIPHY1 PCS channel0 and the
+port6 is connected with Aquantia PHY through UNIPHY2 PCS channel0.
+
+Add Aquantia NVMEM node for IPQ9574 RDP433 board to load the firmware for
+the Aquantia PHY.
+
+Add label to EDMA port for IPQ9574 RDP433 board.
 
 Merged from:
   0349-arm64-dts-qcom-Add-IPQ9574-RDP433-port-node.patch
@@ -19,6 +26,9 @@ Original-commit: c5a3d88f12a7ac9546f5ead061212f06ebaab740
 Original-commit: b6155e23c6c350b528a0d64dc667fefb0a5acbf6
 Original-commit: 88480bcfb5a5444602b5b7019a2005a9b010cb34
 
+Signed-off-by: Lei Wei <quic_leiwei@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq9574-rdp433.dts

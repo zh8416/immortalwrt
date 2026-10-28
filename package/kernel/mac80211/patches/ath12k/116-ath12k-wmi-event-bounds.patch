@@ -1,9 +1,31 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: validate WMI capability event and TLV bounds
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Currently, in ath12k_wmi_mac_phy_caps_parse(), kzalloc() sizes the
+mac_phy_caps buffer as tot_phy_id * len, where len is clamped to
+min(firmware_len, sizeof(struct ath12k_wmi_mac_phy_caps_params)). The
+subsequent memcpy() destination advances by sizeof(full struct) per slot
+via C pointer arithmetic, not by the clamped len. When firmware sends short
+TLVs, the second and later slots are written past the end of the
+allocation.
+
+Currently, in ath12k_wmi_op_rx(), the firmware buffer is read without first
+verifying that the buffer has enough data to hold a header. This could
+result in a buffer overread.
+
+There is no policy entry for WMI_TAG_PDEV_CSA_SWITCH_COUNT_STATUS_EVENT, so
+the parse infrastructure does not enforce a minimum length for the event
+struct. Additionally, the num_vdevs field is taken directly from firmware
+and used as a loop bound over the vdev_ids array without checking that it
+fits within the TLV payload. Either condition can cause an out-of-bounds
+read.
+
+The outer skb->len guard only confirms the SKB is large enough to hold the
+full fixed_param struct, but the TLV's own WMI_TLV_LEN field is never
+checked. Firmware advertising a TLV length shorter than
+sizeof(*fixed_param) causes reads of pdev_id and event_count beyond the
+declared TLV payload.
 
 Merged from:
   116-wifi-ath12k-fix-stride-mismatch-in-mac_phy_caps_parse.patch
@@ -23,6 +45,7 @@ Link: https://patch.msgid.link/20260724-ath12k_wmi_process_csa_switch_count_even
 Original-commit: 8e415b8068480d51a057197ded974e2637e8c42b
 Link: https://patch.msgid.link/20260726-ath12k_wmi_process_tpc_stats-len-check-v1-1-c4ba2f84d9c6@oss.qualcomm.com
 
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/wmi.c

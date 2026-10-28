@@ -1,9 +1,16 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Til Kaiser <mail@tk154.de>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: resolve board identity and radio count from DT
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Some PCIe ath12k platforms report an unusable board ID (0xff) from OTP/QMI,
+which makes firmware lookup fall back to `bus=pci,qmi-chip-id=...,qmi-
+board-id=255` and miss the intended board entry.
+
+QCN9274 hw2.0 can expose two PHYs for wideband designs, so ath12k uses
+max_radios = 2 for the generic hardware parameters. Some boards only wire
+one PHY and skip the second radio. On those boards firmware may still
+expose the second WMI service in the HTC setup path, causing the host to
+connect to WMI_CONTROL_MAC1 and fail before WMI service ready.
 
 Merged from:
   301-ath12k-allow-dt-board-id-override-for-board-data-selection.patch
@@ -13,6 +20,8 @@ Based on work by:
   JiaY-shi <shi05275@163.com>
   Til Kaiser <mail@tk154.de>
 
+Signed-off-by: Til Kaiser <mail@tk154.de>
+Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/htc.c

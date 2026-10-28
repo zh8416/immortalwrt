@@ -1,9 +1,12 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: provide IPQ5332 GPLL0 auxiliary output
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add the definition for GPLL0_OUT_AUX clock. This acts as the parent for the
+certain networking subsystem (NSS) clocks.
+
+Add support for gpll0_out_aux clock which acts as the parent for the
+following networking subsystem (NSS) clocks.
 
 Merged from:
   0358-dt-bindings-clock-ipq5332-add-definition-for-gpll0-out-aux-clock.patch
@@ -13,6 +16,8 @@ Based on work by:
   Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
   Varadarajan Narayanan <quic_varada@quicinc.com>
 
+Signed-off-by: Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
+Signed-off-by: Varadarajan Narayanan <quic_varada@quicinc.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/clk/qcom/gcc-ipq5332.c

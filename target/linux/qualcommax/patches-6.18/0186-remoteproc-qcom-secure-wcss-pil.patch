@@ -1,9 +1,14 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Manikanta Mylavarapu <quic_mmanikan@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] remoteproc: qcom: provide secure WCSS PIL and platform bindings
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add new binding document for hexagon based WCSS secure PIL remoteproc.
+IPQ5018, IPQ5332, IPQ5424 and IPQ9574 follow secure PIL remoteproc.
+
+Add support to bring up hexagon based WCSS using secure PIL. All IPQxxxx
+SoCs support secure Peripheral Image Loading (PIL).
+
+Enable nodes required for q6 remoteproc bring up.
 
 Merged from:
   0186-dt-bindings-remoteproc-qcom-document-hexagon-based-wcss-secure-pil.patch
@@ -21,6 +26,11 @@ Original-commit: db128ef0282b8cc41816caf39a03fa17d10fa865
 Original-commit: 47d46157200bb5f67e540a87c67aab9cde62f8a4
 Original-commit: 553461c1f1ae9b2ac50bce5ed5de15092cc04d29
 
+Signed-off-by: Manikanta Mylavarapu <quic_mmanikan@quicinc.com>
+Signed-off-by: Gokul Sriram Palanisamy <quic_gokulsri@quicinc.com>
+Signed-off-by: Vignesh Viswanathan <vignesh.viswanathan@oss.qualcomm.com>
+Signed-off-by: Gokul Sriram Palanisamy <gokul.sriram.p@oss.qualcomm.com>
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- /dev/null

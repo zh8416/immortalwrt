@@ -1,9 +1,13 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Robert Marko <robimarko@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: complete IPQ networking parent clock topology
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The UNIPHY RX and TX clocks are currently made available to GCC through
+global clock-name matching. Pass them directly to GCC instead, allowing its
+RCGs to use them as clock parents without a global clock lookup.
+
+Document the UNIPHY and CMN networking inputs supplied to GCC by the
+IPQ6018 and IPQ8074 device trees, retaining the older input lists.
 
 Merged from:
   0147-arm64-dts-qcom-ipq8074-add-uniphy-clocks-to-gcc.patch
@@ -14,6 +18,7 @@ Based on work by:
 
 Original-commit: 1222396401a9bcff1ab06fc8025558aaf38e5528
 
+Signed-off-by: Robert Marko <robimarko@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/Documentation/devicetree/bindings/clock/qcom,gcc-ipq6018.yaml

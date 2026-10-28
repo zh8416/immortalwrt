@@ -1,9 +1,24 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: JiaY-shi <shi05275@163.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: implement MLO v2 topology association and peer maps
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Qualcomm's multi-chip firmware supports a version 2 MLO topology TLV that
+describes the adjacent chips for every member of a WSI group. The legacy
+TLV only provides a flat chip and link list. This is insufficient for the
+firmware to reliably derive the WSI routing topology when real multi-link
+traffic starts.
+
+WLAN.WBE.1.6 firmware is paired with the extended WMI_MLO_PEER_ASSOC_PARAMS
+layout used by Qualcomm's current TIP driver. The extension was introduced
+together with station link reconfiguration, but the structure size itself
+is part of the firmware ABI even when none of the optional reconfiguration
+fields are used.
+
+The MLO peer map event is firmware's confirmation that the aggregate peer
+was installed. Besides the ML peer ID and MLD address, current firmware
+supplies the AST index and cache set used by the data path. The driver
+currently consumes only the first two values and entirely ignores the
+matching MLO peer unmap event.
 
 Merged from:
   332-wifi-ath12k-advertise-MLO-v2-adjacency-topology.patch
@@ -13,6 +28,7 @@ Merged from:
 Based on work by:
   JiaY-shi <shi05275@163.com>
 
+Signed-off-by: JiaY-shi <shi05275@163.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath12k/dp_htt.c

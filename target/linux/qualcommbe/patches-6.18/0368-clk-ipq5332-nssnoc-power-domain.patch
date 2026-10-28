@@ -1,9 +1,14 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Til Kaiser <mail@tk154.de>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: attach IPQ5332 NSS fabric clocks to the power domain
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+When ICC sync_state runs after the NSS/PPE consumers probe, the clock-based
+interconnect provider can disable the GCC-side NSS fabric clocks with no
+ICC vote. On IPQ5332 this stalls the system unless the NSSCC access path
+clocks remain attached to the NSSCC PM domain.
+
+Add the GCC-provided NSS fabric clocks used by the IPQ5332 NSSCC PM clock
+setup to the nsscc node.
 
 Merged from:
   0368-clk-qcom-nsscc-ipq5332-Attach-required-NSSNOC-clock-to-PM-domain.patch
@@ -12,6 +17,7 @@ Merged from:
 Based on work by:
   Til Kaiser <mail@tk154.de>
 
+Signed-off-by: Til Kaiser <mail@tk154.de>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq5332.dtsi

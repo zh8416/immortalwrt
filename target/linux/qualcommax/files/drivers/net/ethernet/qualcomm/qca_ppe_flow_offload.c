@@ -3559,6 +3559,7 @@ static int ppe_flow_alloc_egress(struct qca_ppe_priv *priv,
 	 */
 	if (!wifi && (data->pppoe_valid ||
 	    (data->vlan_valid && !priv->port_br_dev[port]))) {
+		odp = dsa_to_port(&priv->ds, port);
 		ret = ppe_uplink_get(priv, port,
 				     data->vlan_valid ? data->vlan_id : 0,
 				     casc ? data->eth.h_source : odp->user->dev_addr,

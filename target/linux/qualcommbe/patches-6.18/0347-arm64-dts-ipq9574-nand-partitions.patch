@@ -1,9 +1,10 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: describe IPQ9574 QPIC NAND partitions
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add QPIC SPI NAND default partition nodes for RDP reference board.
+
+Add partition table for ipq9574 SoC common to every RDB board.
 
 Merged from:
   0347-arm64-dts-qcom-ipq9574-add-QPIC-SPI-NAND-default-par.patch
@@ -15,6 +16,7 @@ Based on work by:
 Original-commit: 8079928b433ff21a39423a7d9233d76d8b6d91aa
 Original-commit: 7e6bf071e4efa66e24feba27619e17eb3c71251d
 
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq9574-rdp-common.dtsi

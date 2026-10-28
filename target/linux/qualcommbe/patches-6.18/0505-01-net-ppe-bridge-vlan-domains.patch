@@ -1,9 +1,22 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: implement VLAN-aware bridge domains
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add the low level helpers for the ingress VLAN pipeline, in preparation for
+offloading VLAN-aware bridges: the per-port default C-VID, the per-port
+ingress filtering mode (the forward command on a translation miss), and the
+ingress VLAN translation rules and actions, which match packets by ingress
+port bitmap and tag format, optionally keyed by VLAN ID, assign a VSI, and
+optionally remove the C-tag for a routed ingress topology.
+
+Extend the bridge offload to VLAN-aware bridges. Each VLAN of an offloaded
+bridge is backed by its own VSI: ingress VLAN translation rules assign
+tagged packets of the member ports and untagged packets of the PVID ports
+to the VSI, and the per-VSI egress tag modes provide tagged or untagged
+egress per port, with the CPU port always tagged so the software ports of
+the bridge see the VLAN of flooded packets. The per-port default C-VID
+supplies the VLAN ID when a packet received untagged on a PVID port leaves
+through a tagged port.
 
 Merged from:
   0505-01-net-ethernet-qualcomm-ppe-add-vlan-config-helpers.patch
@@ -12,6 +25,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_bridge.c

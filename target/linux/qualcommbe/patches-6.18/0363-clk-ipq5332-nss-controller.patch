@@ -1,9 +1,11 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: implement IPQ5332 NSS clock controller and topology
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add Networking Sub System Clock Controller(NSSCC) driver for Qualcomm
+IPQ5332 based devices.
+
+Describe the NSS clock controller node and it's relevant external clocks.
 
 Merged from:
   0363-clk-qcom-add-nss-clock-controller-driver-for-qualcomm-ipq5332.patch
@@ -13,6 +15,8 @@ Based on work by:
   Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
   Varadarajan Narayanan <quic_varada@quicinc.com>
 
+Signed-off-by: Kathiravan Thirumoorthy <quic_kathirav@quicinc.com>
+Signed-off-by: Varadarajan Narayanan <quic_varada@quicinc.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq5332.dtsi

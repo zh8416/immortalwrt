@@ -1,9 +1,21 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Robert Marko <robimarko@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: complete CPU frequency and cooling resources
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Now that CPU clock is exposed and can be controlled, add the necessary
+properties to the CPU nodes.
+
+Since there is CPU Freq support as well as thermal sensor support now for
+the IPQ8074, add cooling cells to CPU nodes so that they can be used as
+cooling devices using CPU Freq.
+
+Add the QFPROM node and CPR fuses.
+
+Now that there is NVMEM CPUFreq support for IPQ8074, we can add the OPP
+table for SoC.
+
+Adjust the supported hardware mask in the IPQ6018 CPU operating point table
+so the described operating points are available to the platform.
 
 Merged from:
   0122-arm64-dts-ipq8074-add-CPU-clock.patch
@@ -21,6 +33,7 @@ Original-commit: 347ca56e86c99021fad059b9a8ef101245b8507e
 Original-commit: 04d2fc6a551bbd972a6428059b45ce79cb9de9d7
 Original-commit: a20c4e8738a00087aa5d53fe5148ed484e23d229
 
+Signed-off-by: Robert Marko <robimarko@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq6018.dtsi

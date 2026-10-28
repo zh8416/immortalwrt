@@ -1,9 +1,19 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Luo Jie <quic_luoj@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: phy: qca8084: implement SerDes probing and link configuration
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+QCA8084 PHY package needs to do the PHY package clean up, add
+phy_package_remove_once helper to support.
+
+QCA8084 PHY package integrates the XPCS and PCS, which is used to support
+10G-QXGMII. XPCS includes 4 channels to connect with Quad PHY, and PCS
+controls the interface mode configured.
+
+When QCA8084 works on 10G-QXGMII, the XPCS and PCS need to be configured in
+the PHY package init function.
+
+When the link of PHY is changed, the XPCS channel needs to be configured to
+adapt the current link status.
 
 Merged from:
   0309-net-phy-Add-phy_package_remove_once-helper.patch
@@ -20,6 +30,8 @@ Original-commit: bc9732a26a25719475f2c6babb6968842cf97108
 Original-commit: 94540ce4131c873e9294088f29230fdac8e97081
 Original-commit: c2d664e748ce7b96dbd07f79091527aaf1725165
 
+Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/phy/phy_package.c

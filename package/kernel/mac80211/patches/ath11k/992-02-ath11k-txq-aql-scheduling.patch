@@ -1,9 +1,87 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath11k: implement airtime-aware TXQ scheduling and completion budgets
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Under heavy traffic, ath11k experiences frequent -ENOMEM errors ("failed to
+transmit frame -12") when the hardware TCL ring fills up. This issue is
+more commonly observed in VMs with PCIe passthrough but also occurs on bare
+metal systems. It is particularly problematic on devices with a single
+shared TCL ring where all traffic classes compete for the same 512
+descriptor slots.
+
+ath11k_dp_tx_free_txbuf(), reached for the HTT REINJ and INSPECT statuses,
+frees the frame with dev_kfree_skb_any(), unlike every other tx completion
+path in dp_tx.c, and so does ath11k_dp_free() for the frames in flight when
+firmware recovery tears the rings down. This leaks the tx status clone and
+idr entry mac80211 keeps for a frame whose socket asked for status, as
+commit 29d15589f084 ("wifi: ath11k: Cleanup mac80211 references on failure
+during tx_complete") fixed on three sibling paths. With
+NL80211_EXT_FEATURE_AQL, set by the next patch, it also keeps the frame's
+airtime charge, which ieee80211_restart_hw() does not reset, and an access
+category at its limit is never scheduled again.
+
+Without NL80211_EXT_FEATURE_AQL, mac80211 applies no airtime queue limit,
+and a saturated download moves every queued frame into the hardware TX
+rings. Set the bit. mac80211 estimates each frame's airtime from the rate
+ath11k reports through ieee80211_tx_status_ext(), and charges its 4 us
+floor while that rate is unset. Only the PPDU stats set it, so single pdev
+chips, which take the rate from the tx completion instead, would stay at
+the floor; set it there as well.
+
+Nothing shows ar->dp.num_tx_pending, the MSDUs the hardware has not
+completed. Print it per radio in soc_dp_stats. Divided into the pending
+airtime in a station's aql file, it gives the airtime AQL charges per MSDU.
+
+mac80211 charges the airtime deficit only through
+ieee80211_sta_register_airtime(), which ath11k never calls, so with
+NL80211_EXT_FEATURE_AIRTIME_FAIRNESS alone every station stays in credit.
+Register fes_duration_us from the PPDU stats, which ath11k already adds to
+arsta->tx_duration, and set the bit. The TID comes from the ack/BA status
+TLV, sent only for a PPDU that drew a response, then from the completion or
+rate TLV, then BE. Each user of a downlink MU PPDU is charged the whole
+duration, as arsta->tx_duration is; every PPDU on this hardware had one
+user. mac80211 takes only local->active_txq_lock[ac] inside the call, which
+runs under ar->data_lock and ab->base_lock.
+
+The wake_tx_queue handler serves only the txq mac80211 passes it, so there
+is no deficit round robin between stations. Run the round in the driver:
+walk the access category's active txqs with ieee80211_next_txq() and drain
+each through the TCL ring check until the airtime queue limit binds or the
+queue empties. A full ring ends the round, since all txqs of a round share
+it. Each round holds a per-category lock, as in ath10k, because mac80211
+forbids concurrent rounds on one category and the next patch also starts
+rounds from tx completion. The design was proposed for ath11k in [1].
+
+A station at its airtime queue limit gets airtime back only when the
+hardware completes its frames, but ath11k starts a round only from
+wake_tx_queue, so the backlog waits for the next frame from the stack.
+Start a round for each access category, taken from the frame's queue
+mapping, that a reaped completion belonged to, whether the hardware or the
+firmware released the frame.
+
+mac80211 charges received airtime to the same deficit, as AIRTIME_USE_RX is
+set by default, but ath11k reports none. Register each received PPDU's
+duration, which ath11k already adds to rx_duration, once against the PPDU's
+first TID, or BE when it names none. The TID comes from the PPDU end user
+stats TLV, which is added to the default monitor status filter. The call
+runs under ab->base_lock, as on the transmit side:
+ath11k_mac_op_sta_state() drops the station from its peer under that lock,
+and mac80211 frees it after that without an RCU grace period.
+
+ath11k_dp_tx() returns -ENOSPC when the MSDU idr is full and -ENOMEM when
+no TCL descriptor is free or a DMA mapping fails; it frees the frame, and
+the round then dequeues and frees the next frame of the same flow. End the
+round on those errors, leaving the frames behind queued; other errors
+concern only the frame. A category whose round ended this way or on a full
+TCL ring may have nothing of its own in flight, so mark it and start its
+round from the next tx completion on the device.
+
+ath11k_dp_tx_completion_handler() reaps the whole release ring, and
+ath11k_dp_service_srng() charges none of it against the NAPI budget, unlike
+the receive handlers. Since the handler now ends in a scheduling round, a
+full ring gets one round for all of it. Reap at most the budget per poll
+and return the count, so a round runs once per budget of completions; NAPI
+polls again at once for the rest.
 
 Merged from:
   992-03-wifi-ath11k-implement-custom-wake_tx_queue-with-flow-control.patch
@@ -24,6 +102,8 @@ Based on work by:
 Link: https://lore.kernel.org/all/20260917064825.12747-1-jtornosm@redhat.com/
 Link: https://lore.kernel.org/all/20230501130725.7171-1-quic_tamizhr@quicinc.com/ [1]
 
+Signed-off-by: Jose Ignacio Tornos Martinez <jtornosm@redhat.com>
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath11k/core.c
@@ -36,79 +116,6 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	ath11k_dp_free(ab);
  	ath11k_hal_srng_clear(ab);
  
---- a/drivers/net/wireless/ath/ath11k/core.h
-+++ b/drivers/net/wireless/ath/ath11k/core.h
-@@ -715,6 +715,13 @@
- 	 */
- 	spinlock_t data_lock;
- 
-+	/* serialises one scheduling round per access category against the
-+	 * other contexts that drive it
-+	 */
-+	spinlock_t txq_lock[IEEE80211_NUM_ACS];
-+	/* access categories whose round ended for lack of room */
-+	unsigned long txq_starved;
-+
- 	struct list_head arvifs;
- 	/* should never be NULL; needed for regular htt rx */
- 	struct ieee80211_channel *rx_channel;
---- a/drivers/net/wireless/ath/ath11k/debugfs.c
-+++ b/drivers/net/wireless/ath/ath11k/debugfs.c
-@@ -714,6 +714,16 @@
- 			 "\nMisc Transmit Failures: %d\n",
- 			 atomic_read(&soc_stats->tx_err.misc_fail));
- 
-+	/* Descriptors the hardware has not completed. */
-+	len += scnprintf(buf + len, size - len, "\nPending Tx MSDUs:\n");
-+	for (i = 0; i < ab->num_radios; i++) {
-+		struct ath11k *ar = ab->pdevs[i].ar;
-+
-+		if (ar)
-+			len += scnprintf(buf + len, size - len, "radio%d: %d\n",
-+					 i, atomic_read(&ar->dp.num_tx_pending));
-+	}
-+
- 	len += ath11k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
- 
- 	if (len > size)
---- a/drivers/net/wireless/ath/ath11k/dp.c
-+++ b/drivers/net/wireless/ath/ath11k/dp.c
-@@ -781,8 +781,14 @@
- 
- 	for (i = 0; i < ab->hw_params.hal_params->num_tx_rings; i++) {
- 		if (BIT(ab->hw_params.hal_params->tcl2wbm_rbm_map[i].wbm_ring_num) &
--		    ab->hw_params.ring_mask->tx[grp_id])
--			ath11k_dp_tx_completion_handler(ab, i);
-+		    ab->hw_params.ring_mask->tx[grp_id]) {
-+			work_done =
-+				ath11k_dp_tx_completion_handler(ab, i, budget);
-+			budget -= work_done;
-+			tot_work_done += work_done;
-+			if (budget <= 0)
-+				goto done;
-+		}
- 	}
- 
- 	if (ab->hw_params.ring_mask->rx_err[grp_id]) {
-@@ -1087,6 +1093,7 @@
- 	for (i = 0; i < ab->hw_params.hal_params->num_tx_rings; i++) {
- 		idr_init(&dp->tx_ring[i].txbuf_idr);
- 		spin_lock_init(&dp->tx_ring[i].tx_idr_lock);
-+		spin_lock_init(&dp->tx_ring[i].wake_tx_lock);
- 		dp->tx_ring[i].tcl_data_ring_id = i;
- 
- 		dp->tx_ring[i].tx_status_head = 0;
---- a/drivers/net/wireless/ath/ath11k/dp.h
-+++ b/drivers/net/wireless/ath/ath11k/dp.h
-@@ -87,6 +87,8 @@
- 	struct idr txbuf_idr;
- 	/* Protects txbuf_idr and num_pending */
- 	spinlock_t tx_idr_lock;
-+	/* Serializes wake_tx_queue operations for this ring */
-+	spinlock_t wake_tx_lock;
- 	struct hal_wbm_release_ring *tx_status;
- 	int tx_status_head;
- 	int tx_status_tail;
 --- a/drivers/net/wireless/ath/ath11k/dp_rx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_rx.c
 @@ -1377,6 +1377,7 @@
@@ -167,6 +174,288 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		if (ath11k_debugfs_is_pktlog_peer_valid(ar, peer->addr))
  			trace_ath11k_htt_rxdesc(ar, skb->data, log_type, rx_buf_sz);
  
+--- a/drivers/net/wireless/ath/ath11k/debugfs.c
++++ b/drivers/net/wireless/ath/ath11k/debugfs.c
+@@ -714,6 +714,16 @@
+ 			 "\nMisc Transmit Failures: %d\n",
+ 			 atomic_read(&soc_stats->tx_err.misc_fail));
+ 
++	/* Descriptors the hardware has not completed. */
++	len += scnprintf(buf + len, size - len, "\nPending Tx MSDUs:\n");
++	for (i = 0; i < ab->num_radios; i++) {
++		struct ath11k *ar = ab->pdevs[i].ar;
++
++		if (ar)
++			len += scnprintf(buf + len, size - len, "radio%d: %d\n",
++					 i, atomic_read(&ar->dp.num_tx_pending));
++	}
++
+ 	len += ath11k_debugfs_dump_soc_ring_bp_stats(ab, buf + len, size - len);
+ 
+ 	if (len > size)
+--- a/drivers/net/wireless/ath/ath11k/dp.c
++++ b/drivers/net/wireless/ath/ath11k/dp.c
+@@ -781,8 +781,14 @@
+ 
+ 	for (i = 0; i < ab->hw_params.hal_params->num_tx_rings; i++) {
+ 		if (BIT(ab->hw_params.hal_params->tcl2wbm_rbm_map[i].wbm_ring_num) &
+-		    ab->hw_params.ring_mask->tx[grp_id])
+-			ath11k_dp_tx_completion_handler(ab, i);
++		    ab->hw_params.ring_mask->tx[grp_id]) {
++			work_done =
++				ath11k_dp_tx_completion_handler(ab, i, budget);
++			budget -= work_done;
++			tot_work_done += work_done;
++			if (budget <= 0)
++				goto done;
++		}
+ 	}
+ 
+ 	if (ab->hw_params.ring_mask->rx_err[grp_id]) {
+@@ -1087,6 +1093,7 @@
+ 	for (i = 0; i < ab->hw_params.hal_params->num_tx_rings; i++) {
+ 		idr_init(&dp->tx_ring[i].txbuf_idr);
+ 		spin_lock_init(&dp->tx_ring[i].tx_idr_lock);
++		spin_lock_init(&dp->tx_ring[i].wake_tx_lock);
+ 		dp->tx_ring[i].tcl_data_ring_id = i;
+ 
+ 		dp->tx_ring[i].tx_status_head = 0;
+--- a/drivers/net/wireless/ath/ath11k/mac.h
++++ b/drivers/net/wireless/ath/ath11k/mac.h
+@@ -161,6 +161,7 @@
+ struct ath11k *ath11k_mac_get_ar_by_pdev_id(struct ath11k_base *ab, u32 pdev_id);
+ 
+ void ath11k_mac_drain_tx(struct ath11k *ar);
++void ath11k_mac_tx_push_pending(struct ath11k *ar, u8 ac);
+ void ath11k_mac_peer_cleanup_all(struct ath11k *ar);
+ int ath11k_mac_tx_mgmt_pending_free(int buf_id, void *skb, void *ctx);
+ u8 ath11k_mac_bw_to_mac80211_bw(u8 bw);
+--- a/drivers/net/wireless/ath/ath11k/core.h
++++ b/drivers/net/wireless/ath/ath11k/core.h
+@@ -715,6 +715,13 @@
+ 	 */
+ 	spinlock_t data_lock;
+ 
++	/* serialises one scheduling round per access category against the
++	 * other contexts that drive it
++	 */
++	spinlock_t txq_lock[IEEE80211_NUM_ACS];
++	/* access categories whose round ended for lack of room */
++	unsigned long txq_starved;
++
+ 	struct list_head arvifs;
+ 	/* should never be NULL; needed for regular htt rx */
+ 	struct ieee80211_channel *rx_channel;
+--- a/drivers/net/wireless/ath/ath11k/mac.c
++++ b/drivers/net/wireless/ath/ath11k/mac.c
+@@ -229,6 +229,7 @@
+ const struct htt_rx_ring_tlv_filter ath11k_mac_mon_status_filter_default = {
+ 	.rx_filter = HTT_RX_FILTER_TLV_FLAGS_MPDU_START |
+ 		     HTT_RX_FILTER_TLV_FLAGS_PPDU_END |
++		     HTT_RX_FILTER_TLV_FLAGS_PPDU_END_USER_STATS |
+ 		     HTT_RX_FILTER_TLV_FLAGS_PPDU_END_STATUS_DONE,
+ 	.pkt_filter_flags0 = HTT_RX_FP_MGMT_FILTER_FLAGS0,
+ 	.pkt_filter_flags1 = HTT_RX_FP_MGMT_FILTER_FLAGS1,
+@@ -6502,9 +6503,9 @@
+ 	return 0;
+ }
+ 
+-static void ath11k_mac_op_tx(struct ieee80211_hw *hw,
+-			     struct ieee80211_tx_control *control,
+-			     struct sk_buff *skb)
++static int ath11k_mac_tx(struct ieee80211_hw *hw,
++			 struct ieee80211_tx_control *control,
++			 struct sk_buff *skb)
+ {
+ 	struct ath11k_skb_cb *skb_cb = ATH11K_SKB_CB(skb);
+ 	struct ath11k *ar = hw->priv;
+@@ -6536,7 +6537,7 @@
+ 				    ret);
+ 			ieee80211_free_txskb(ar->hw, skb);
+ 		}
+-		return;
++		return ret;
+ 	}
+ 
+ 	if (control->sta)
+@@ -6547,6 +6548,15 @@
+ 		ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
+ 		ieee80211_free_txskb(ar->hw, skb);
+ 	}
++
++	return ret;
++}
++
++static void ath11k_mac_op_tx(struct ieee80211_hw *hw,
++			     struct ieee80211_tx_control *control,
++			     struct sk_buff *skb)
++{
++	ath11k_mac_tx(hw, control, skb);
+ }
+ 
+ void ath11k_mac_drain_tx(struct ath11k *ar)
+@@ -10088,9 +10098,118 @@
+ 	return ret;
+ }
+ 
++/* Mark before checking pending so a completion cannot miss the retry. */
++static bool ath11k_mac_mark_txq_starved(struct ath11k *ar, u8 ac)
++{
++	struct ath11k_base *ab = ar->ab;
++	int i;
++
++	set_bit(ac, &ar->txq_starved);
++	smp_mb__after_atomic();
++
++	for (i = 0; i < ab->num_radios; i++)
++		if (atomic_read(&ab->pdevs[i].ar->dp.num_tx_pending))
++			return true;
++
++	return false;
++}
++
++static int ath11k_mac_tx_push_txq(struct ath11k *ar, struct ieee80211_txq *txq)
++{
++	struct ieee80211_tx_control control = {
++		.sta = txq->sta,
++	};
++	struct ieee80211_hw *hw = ar->hw;
++	struct dp_tx_ring *tx_ring;
++	struct hal_srng *tcl_ring;
++	struct sk_buff *skb;
++	u32 ring_selector;
++	int num_free;
++	int ret;
++	u8 ring_id;
++
++	ring_selector = ar->ab->hw_params.hw_ops->get_ring_selector(txq->ac);
++	ring_id = ring_selector % ar->ab->hw_params.hal_params->num_tx_rings;
++	tx_ring = &ar->ab->dp.tx_ring[ring_id];
++	tcl_ring = &ar->ab->hal.srng_list[tx_ring->tcl_data_ring.ring_id];
++
++	/* ieee80211_tx_dequeue() applies the airtime queue limit, so a
++	 * selection ends where that limit binds or the queue empties. A full
++	 * TCL ring ends the whole round, and so does a frame the hardware
++	 * refuses, as long as a frame in flight will restart it.
++	 */
++	while (1) {
++		if (unlikely(test_bit(ATH11K_FLAG_CRASH_FLUSH,
++				      &ar->ab->dev_flags)))
++			break;
++
++		spin_lock_bh(&tx_ring->wake_tx_lock);
++
++		spin_lock_bh(&tcl_ring->lock);
++		num_free = ath11k_hal_srng_src_num_free(ar->ab, tcl_ring, true);
++		spin_unlock_bh(&tcl_ring->lock);
++
++		if (num_free == 0) {
++			spin_unlock_bh(&tx_ring->wake_tx_lock);
++			if (ath11k_mac_mark_txq_starved(ar, txq->ac))
++				return -ENOSPC;
++			continue;
++		}
++
++		skb = ieee80211_tx_dequeue(hw, txq);
++		if (!skb) {
++			spin_unlock_bh(&tx_ring->wake_tx_lock);
++			break;
++		}
++
++		ret = ath11k_mac_tx(hw, &control, skb);
++
++		spin_unlock_bh(&tx_ring->wake_tx_lock);
++
++		if (unlikely(ret == -ENOSPC || ret == -ENOMEM) &&
++		    ath11k_mac_mark_txq_starved(ar, txq->ac))
++			return ret;
++	}
++
++	return 0;
++}
++
++static void ath11k_mac_schedule_txq(struct ath11k *ar, u8 ac)
++{
++	struct ieee80211_hw *hw = ar->hw;
++	struct ieee80211_txq *txq;
++
++	spin_lock_bh(&ar->txq_lock[ac]);
++
++	ieee80211_txq_schedule_start(hw, ac);
++	while ((txq = ieee80211_next_txq(hw, ac))) {
++		int ret = ath11k_mac_tx_push_txq(ar, txq);
++
++		ieee80211_return_txq(hw, txq, false);
++		if (unlikely(ret))
++			break;
++	}
++	ieee80211_txq_schedule_end(hw, ac);
++
++	spin_unlock_bh(&ar->txq_lock[ac]);
++}
++
++static void ath11k_mac_op_wake_tx_queue(struct ieee80211_hw *hw,
++					struct ieee80211_txq *txq)
++{
++	ath11k_mac_schedule_txq(hw->priv, txq->ac);
++}
++
++void ath11k_mac_tx_push_pending(struct ath11k *ar, u8 ac)
++{
++	rcu_read_lock();
++	ath11k_mac_schedule_txq(ar, ac);
++	rcu_read_unlock();
++}
++
+ static const struct ieee80211_ops ath11k_ops = {
+ 	.tx				= ath11k_mac_op_tx,
+-	.wake_tx_queue			= ieee80211_handle_wake_tx_queue,
++	.wake_tx_queue			= ath11k_mac_op_wake_tx_queue,
+ 	.start                          = ath11k_mac_op_start,
+ 	.stop                           = ath11k_mac_op_stop,
+ 	.reconfig_complete              = ath11k_mac_op_reconfig_complete,
+@@ -10616,6 +10735,9 @@
+ 	ar->hw->sta_data_size = sizeof(struct ath11k_sta);
+ 
+ 	wiphy_ext_feature_set(ar->hw->wiphy, NL80211_EXT_FEATURE_CQM_RSSI_LIST);
++	wiphy_ext_feature_set(ar->hw->wiphy, NL80211_EXT_FEATURE_AQL);
++	wiphy_ext_feature_set(ar->hw->wiphy,
++			      NL80211_EXT_FEATURE_AIRTIME_FAIRNESS);
+ 	wiphy_ext_feature_set(ar->hw->wiphy, NL80211_EXT_FEATURE_STA_TX_PWR);
+ 	if (test_bit(WMI_TLV_SERVICE_BSS_COLOR_OFFLOAD,
+ 		     ar->ab->wmi_ab.svc_map)) {
+@@ -10778,7 +10900,7 @@
+ 	struct ath11k *ar;
+ 	struct ath11k_pdev *pdev;
+ 	int ret;
+-	int i;
++	int i, j;
+ 
+ 	if (test_bit(ATH11K_FLAG_REGISTERED, &ab->dev_flags))
+ 		return 0;
+@@ -10812,6 +10934,9 @@
+ 
+ 		pdev->ar = ar;
+ 		spin_lock_init(&ar->data_lock);
++
++		for (j = 0; j < IEEE80211_NUM_ACS; j++)
++			spin_lock_init(&ar->txq_lock[j]);
+ 		INIT_LIST_HEAD(&ar->arvifs);
+ 		INIT_LIST_HEAD(&ar->ppdu_stats_info);
+ 		mutex_init(&ar->conf_mutex);
+--- a/drivers/net/wireless/ath/ath11k/dp_tx.h
++++ b/drivers/net/wireless/ath/ath11k/dp_tx.h
+@@ -21,7 +21,9 @@
+ int ath11k_dp_tx_htt_h2t_ver_req_msg(struct ath11k_base *ab);
+ int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
+ 		 struct ath11k_sta *arsta, struct sk_buff *skb);
+-void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id);
++int ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id,
++				    int budget);
++void ath11k_dp_tx_free_pending(struct ath11k_base *ab);
+ int ath11k_dp_tx_send_reo_cmd(struct ath11k_base *ab, struct dp_rx_tid *rx_tid,
+ 			      enum hal_reo_cmd_type type,
+ 			      struct ath11k_hal_reo_cmd *cmd,
 --- a/drivers/net/wireless/ath/ath11k/dp_tx.c
 +++ b/drivers/net/wireless/ath/ath11k/dp_tx.c
 @@ -288,7 +288,8 @@
@@ -369,224 +658,14 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  }
  
  int ath11k_dp_tx_send_reo_cmd(struct ath11k_base *ab, struct dp_rx_tid *rx_tid,
---- a/drivers/net/wireless/ath/ath11k/dp_tx.h
-+++ b/drivers/net/wireless/ath/ath11k/dp_tx.h
-@@ -21,7 +21,9 @@
- int ath11k_dp_tx_htt_h2t_ver_req_msg(struct ath11k_base *ab);
- int ath11k_dp_tx(struct ath11k *ar, struct ath11k_vif *arvif,
- 		 struct ath11k_sta *arsta, struct sk_buff *skb);
--void ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id);
-+int ath11k_dp_tx_completion_handler(struct ath11k_base *ab, int ring_id,
-+				    int budget);
-+void ath11k_dp_tx_free_pending(struct ath11k_base *ab);
- int ath11k_dp_tx_send_reo_cmd(struct ath11k_base *ab, struct dp_rx_tid *rx_tid,
- 			      enum hal_reo_cmd_type type,
- 			      struct ath11k_hal_reo_cmd *cmd,
---- a/drivers/net/wireless/ath/ath11k/mac.c
-+++ b/drivers/net/wireless/ath/ath11k/mac.c
-@@ -229,6 +229,7 @@
- const struct htt_rx_ring_tlv_filter ath11k_mac_mon_status_filter_default = {
- 	.rx_filter = HTT_RX_FILTER_TLV_FLAGS_MPDU_START |
- 		     HTT_RX_FILTER_TLV_FLAGS_PPDU_END |
-+		     HTT_RX_FILTER_TLV_FLAGS_PPDU_END_USER_STATS |
- 		     HTT_RX_FILTER_TLV_FLAGS_PPDU_END_STATUS_DONE,
- 	.pkt_filter_flags0 = HTT_RX_FP_MGMT_FILTER_FLAGS0,
- 	.pkt_filter_flags1 = HTT_RX_FP_MGMT_FILTER_FLAGS1,
-@@ -6502,9 +6503,9 @@
- 	return 0;
- }
- 
--static void ath11k_mac_op_tx(struct ieee80211_hw *hw,
--			     struct ieee80211_tx_control *control,
--			     struct sk_buff *skb)
-+static int ath11k_mac_tx(struct ieee80211_hw *hw,
-+			 struct ieee80211_tx_control *control,
-+			 struct sk_buff *skb)
- {
- 	struct ath11k_skb_cb *skb_cb = ATH11K_SKB_CB(skb);
- 	struct ath11k *ar = hw->priv;
-@@ -6536,7 +6537,7 @@
- 				    ret);
- 			ieee80211_free_txskb(ar->hw, skb);
- 		}
--		return;
-+		return ret;
- 	}
- 
- 	if (control->sta)
-@@ -6547,6 +6548,15 @@
- 		ath11k_warn(ar->ab, "failed to transmit frame %d\n", ret);
- 		ieee80211_free_txskb(ar->hw, skb);
- 	}
-+
-+	return ret;
-+}
-+
-+static void ath11k_mac_op_tx(struct ieee80211_hw *hw,
-+			     struct ieee80211_tx_control *control,
-+			     struct sk_buff *skb)
-+{
-+	ath11k_mac_tx(hw, control, skb);
- }
- 
- void ath11k_mac_drain_tx(struct ath11k *ar)
-@@ -10108,10 +10118,119 @@
- 	return 0;
- }
- 
-+/* Mark before checking pending so a completion cannot miss the retry. */
-+static bool ath11k_mac_mark_txq_starved(struct ath11k *ar, u8 ac)
-+{
-+	struct ath11k_base *ab = ar->ab;
-+	int i;
-+
-+	set_bit(ac, &ar->txq_starved);
-+	smp_mb__after_atomic();
-+
-+	for (i = 0; i < ab->num_radios; i++)
-+		if (atomic_read(&ab->pdevs[i].ar->dp.num_tx_pending))
-+			return true;
-+
-+	return false;
-+}
-+
-+static int ath11k_mac_tx_push_txq(struct ath11k *ar, struct ieee80211_txq *txq)
-+{
-+	struct ieee80211_tx_control control = {
-+		.sta = txq->sta,
-+	};
-+	struct ieee80211_hw *hw = ar->hw;
-+	struct dp_tx_ring *tx_ring;
-+	struct hal_srng *tcl_ring;
-+	struct sk_buff *skb;
-+	u32 ring_selector;
-+	int num_free;
-+	int ret;
-+	u8 ring_id;
-+
-+	ring_selector = ar->ab->hw_params.hw_ops->get_ring_selector(txq->ac);
-+	ring_id = ring_selector % ar->ab->hw_params.hal_params->num_tx_rings;
-+	tx_ring = &ar->ab->dp.tx_ring[ring_id];
-+	tcl_ring = &ar->ab->hal.srng_list[tx_ring->tcl_data_ring.ring_id];
-+
-+	/* ieee80211_tx_dequeue() applies the airtime queue limit, so a
-+	 * selection ends where that limit binds or the queue empties. A full
-+	 * TCL ring ends the whole round, and so does a frame the hardware
-+	 * refuses, as long as a frame in flight will restart it.
-+	 */
-+	while (1) {
-+		if (unlikely(test_bit(ATH11K_FLAG_CRASH_FLUSH,
-+				      &ar->ab->dev_flags)))
-+			break;
-+
-+		spin_lock_bh(&tx_ring->wake_tx_lock);
-+
-+		spin_lock_bh(&tcl_ring->lock);
-+		num_free = ath11k_hal_srng_src_num_free(ar->ab, tcl_ring, true);
-+		spin_unlock_bh(&tcl_ring->lock);
-+
-+		if (num_free == 0) {
-+			spin_unlock_bh(&tx_ring->wake_tx_lock);
-+			if (ath11k_mac_mark_txq_starved(ar, txq->ac))
-+				return -ENOSPC;
-+			continue;
-+		}
-+
-+		skb = ieee80211_tx_dequeue(hw, txq);
-+		if (!skb) {
-+			spin_unlock_bh(&tx_ring->wake_tx_lock);
-+			break;
-+		}
-+
-+		ret = ath11k_mac_tx(hw, &control, skb);
-+
-+		spin_unlock_bh(&tx_ring->wake_tx_lock);
-+
-+		if (unlikely(ret == -ENOSPC || ret == -ENOMEM) &&
-+		    ath11k_mac_mark_txq_starved(ar, txq->ac))
-+			return ret;
-+	}
-+
-+	return 0;
-+}
-+
-+static void ath11k_mac_schedule_txq(struct ath11k *ar, u8 ac)
-+{
-+	struct ieee80211_hw *hw = ar->hw;
-+	struct ieee80211_txq *txq;
-+
-+	spin_lock_bh(&ar->txq_lock[ac]);
-+
-+	ieee80211_txq_schedule_start(hw, ac);
-+	while ((txq = ieee80211_next_txq(hw, ac))) {
-+		int ret = ath11k_mac_tx_push_txq(ar, txq);
-+
-+		ieee80211_return_txq(hw, txq, false);
-+		if (unlikely(ret))
-+			break;
-+	}
-+	ieee80211_txq_schedule_end(hw, ac);
-+
-+	spin_unlock_bh(&ar->txq_lock[ac]);
-+}
-+
-+static void ath11k_mac_op_wake_tx_queue(struct ieee80211_hw *hw,
-+					struct ieee80211_txq *txq)
-+{
-+	ath11k_mac_schedule_txq(hw->priv, txq->ac);
-+}
-+
-+void ath11k_mac_tx_push_pending(struct ath11k *ar, u8 ac)
-+{
-+	rcu_read_lock();
-+	ath11k_mac_schedule_txq(ar, ac);
-+	rcu_read_unlock();
-+}
-+
- static const struct ieee80211_ops ath11k_ops = {
- 	.net_fill_forward_path          = ath11k_mac_op_net_fill_forward_path,
- 	.tx				= ath11k_mac_op_tx,
--	.wake_tx_queue			= ieee80211_handle_wake_tx_queue,
-+	.wake_tx_queue			= ath11k_mac_op_wake_tx_queue,
- 	.start                          = ath11k_mac_op_start,
- 	.stop                           = ath11k_mac_op_stop,
- 	.reconfig_complete              = ath11k_mac_op_reconfig_complete,
-@@ -10637,6 +10756,9 @@
- 	ar->hw->sta_data_size = sizeof(struct ath11k_sta);
- 
- 	wiphy_ext_feature_set(ar->hw->wiphy, NL80211_EXT_FEATURE_CQM_RSSI_LIST);
-+	wiphy_ext_feature_set(ar->hw->wiphy, NL80211_EXT_FEATURE_AQL);
-+	wiphy_ext_feature_set(ar->hw->wiphy,
-+			      NL80211_EXT_FEATURE_AIRTIME_FAIRNESS);
- 	wiphy_ext_feature_set(ar->hw->wiphy, NL80211_EXT_FEATURE_STA_TX_PWR);
- 	if (test_bit(WMI_TLV_SERVICE_BSS_COLOR_OFFLOAD,
- 		     ar->ab->wmi_ab.svc_map)) {
-@@ -10799,7 +10921,7 @@
- 	struct ath11k *ar;
- 	struct ath11k_pdev *pdev;
- 	int ret;
--	int i;
-+	int i, j;
- 
- 	if (test_bit(ATH11K_FLAG_REGISTERED, &ab->dev_flags))
- 		return 0;
-@@ -10833,6 +10955,9 @@
- 
- 		pdev->ar = ar;
- 		spin_lock_init(&ar->data_lock);
-+
-+		for (j = 0; j < IEEE80211_NUM_ACS; j++)
-+			spin_lock_init(&ar->txq_lock[j]);
- 		INIT_LIST_HEAD(&ar->arvifs);
- 		INIT_LIST_HEAD(&ar->ppdu_stats_info);
- 		mutex_init(&ar->conf_mutex);
---- a/drivers/net/wireless/ath/ath11k/mac.h
-+++ b/drivers/net/wireless/ath/ath11k/mac.h
-@@ -161,6 +161,7 @@
- struct ath11k *ath11k_mac_get_ar_by_pdev_id(struct ath11k_base *ab, u32 pdev_id);
- 
- void ath11k_mac_drain_tx(struct ath11k *ar);
-+void ath11k_mac_tx_push_pending(struct ath11k *ar, u8 ac);
- void ath11k_mac_peer_cleanup_all(struct ath11k *ar);
- int ath11k_mac_tx_mgmt_pending_free(int buf_id, void *skb, void *ctx);
- u8 ath11k_mac_bw_to_mac80211_bw(u8 bw);
+--- a/drivers/net/wireless/ath/ath11k/dp.h
++++ b/drivers/net/wireless/ath/ath11k/dp.h
+@@ -87,6 +87,8 @@
+ 	struct idr txbuf_idr;
+ 	/* Protects txbuf_idr and num_pending */
+ 	spinlock_t tx_idr_lock;
++	/* Serializes wake_tx_queue operations for this ring */
++	spinlock_t wake_tx_lock;
+ 	struct hal_wbm_release_ring *tx_status;
+ 	int tx_status_head;
+ 	int tx_status_tail;

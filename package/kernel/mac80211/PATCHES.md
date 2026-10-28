@@ -32,5 +32,7 @@ consumers; native Direct Switch requires the matching kernel PPE interfaces.
 Always validate forward/reverse replay and the final expanded source.
 
 Use the upstream 007 IEEE80211 forward-path discovery and 108 compact DMA
-capability parser once each. Local AP forward-path resolution and PPDU limits
-remain separate. A sole 394 management-link patch has no series subindex.
+capability parser once each. Bridge and routed flowtables request the upstream
+IEEE80211 terminal path; ath11k/ath12k do not duplicate it with AP-only callbacks.
+PPDU limits remain separate. The sole PPDU-limit and 394 management-link units
+have no series subindex.

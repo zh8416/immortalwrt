@@ -1,9 +1,13 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Christian Marangi <ansuelsmth@gmail.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] clk: qcom: attach IPQ9574 NSSNOC clocks to the power domain
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+There is currently a problem with ICC clock disabling the NSSNOC clock as
+there isn't any user for them on calling sync_state. This cause the kernel
+to stall if NSS is enabled and reboot with the watchdog.
+
+Add NSSNOC clock to nss node to attach the clock with PM clock and fix the
+boot stall after ICC sync_state.
 
 Merged from:
   0352-clk-qcom-nsscc-Attach-required-NSSNOC-clock-to-PM-do.patch
@@ -16,6 +20,8 @@ Based on work by:
 Original-commit: acbd594bd043db9df90394f40e503143637a5f3e
 Original-commit: 7767d4651734a63576282cdbd93a5a7e7318d557
 
+Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq9574.dtsi

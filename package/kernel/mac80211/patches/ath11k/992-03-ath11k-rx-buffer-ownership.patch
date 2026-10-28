@@ -1,9 +1,18 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath11k: own RX buffers with page pools and indexed lookup
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+The RX refill ring takes every buffer from dev_alloc_skb(), maps it with
+dma_map_single() and unmaps it again when the frame is reaped. Buffers of
+the ring share the per-CPU page-frag caches with unrelated allocations, so
+one long-lived skb pins a whole high-order page.
+
+Every RX buffer gets an id from the ring's IDR when it is posted and gives
+it back when it is reaped, and the IDR allocation is one of the larger
+costs per received frame. The ids a ring hands out are bounded by the ring
+size, so keep them in a table indexed by id with a stack of the free ones
+instead. Posting a buffer pops an id and reaping it pushes the id back,
+both in constant time under the existing ring lock.
 
 Merged from:
   992-13-wifi-ath11k-use-page_pool-for-the-RX-refill-ring.patch
@@ -15,6 +24,7 @@ Based on work by:
 Link: https://lore.kernel.org/linux-wireless/20260719215817.2468580-1-wabsie@gmail.com/
 Link: https://lore.kernel.org/linux-wireless/20261008-ath12k-pp-v1-0-68f888cd7eec@oss.qualcomm.com/
 
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath11k/Kconfig

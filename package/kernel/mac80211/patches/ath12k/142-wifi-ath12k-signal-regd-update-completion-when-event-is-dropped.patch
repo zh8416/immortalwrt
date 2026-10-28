@@ -1,6 +1,6 @@
 From 5ab45cf517d7ba0ac291e9f47a5585fe77705595 Mon Sep 17 00:00:00 2001
-From: ViKing <viking.yfy@qq.com>
-Date: Wed, 29 Jul 2026 15:18:11 +0800
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath12k: signal regd update completion when reg event is
  dropped
 
@@ -30,16 +30,15 @@ invalid pdevs[] access.
 Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
 
 Fixes: 906619a00967 ("wifi: ath12k: handle regulatory hints during mac registration")
-Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
 Link: https://patch.msgid.link/20260729-ath12k-regd-wait-timeout-v1-1-504aa6e7e93c@oss.qualcomm.com
+
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 ---
  drivers/net/wireless/ath/ath12k/wmi.c | 11 +++++++++--
  1 file changed, 9 insertions(+), 2 deletions(-)
-
-Signed-off-by: ViKing <viking.yfy@qq.com>
-
 --- a/drivers/net/wireless/ath/ath12k/wmi.c
 +++ b/drivers/net/wireless/ath/ath12k/wmi.c
 @@ -6973,6 +6973,14 @@

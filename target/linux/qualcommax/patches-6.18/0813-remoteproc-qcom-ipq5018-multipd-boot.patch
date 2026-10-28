@@ -1,9 +1,18 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Ziyang Huang <hzyitc@outlook.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] remoteproc: qcom: complete IPQ5018 multi-PD clocks and boot arguments
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Use managed clock enable so probe failure and remove disable all clocks
+before freeing the root remoteproc context.
+
+Balance the parent boot reference and MSA lock when loading or starting a
+user domain fails. Preserve firmware ASIDs and the existing boot protocol.
+
+On multi-PD platforms such as IPQ5018, boot args are passed to the root PD
+run on the Q6 processor which in turn boots the user PDs for internal
+(IPQ5018) and external wifi radios (such as QCN6122). These boot args let
+the user PD process know details like what PCIE index, user PD ID, and
+reset GPIO is used. These are otherwise hardcoded in the firmware.
 
 Merged from:
   0813-remoteproc-qcom_q6v5_mpd-enable-clocks.patch
@@ -17,6 +26,8 @@ Based on work by:
 Original-commit: e83215d5d22946885fa388d375b12f1b991a43c1
 Original-commit: 4ae334127f073aa5f7c9209c9f0a17fd9e331db1
 
+Signed-off-by: Ziyang Huang <hzyitc@outlook.com>
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/remoteproc/qcom_q6v5_mpd.c

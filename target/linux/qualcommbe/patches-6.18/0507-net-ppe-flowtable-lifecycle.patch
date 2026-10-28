@@ -1,9 +1,28 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: bind diagnose and expire netfilter flowtables
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add the PPE resource manager and rule translator used by netfilter
+flowtable offload. A later patch publishes it through the PPE port
+netdevices' ndo_setup_tc callback.
+
+Expose compact flow identities, live hardware hit counters, active- flow
+totals and CPU/drop reasons through read-only debugfs. Keep register
+dependency snapshots out of the normal driver diagnostics.
+
+Publish the already initialized PPE flowtable implementation through the
+physical-port ndo_setup_tc callback. Keeping the flow-block binding in its
+own patch makes this the explicit point at which the preceding resource and
+translation code becomes reachable from netfilter.
+
+Hardware-forwarded packets never revalidate their route in software, and
+the per-flow hit counter counts at ingress lookup whether or not egress
+delivery still works. A flow whose egress link went down would therefore
+keep refreshing its conntrack timeout through the statistics reports while
+black-holing every packet, wedged until the conntrack entry is removed by
+hand: the software revalidation which tears down flows over a stale route
+only runs on packets taking the software path, which a fully offloaded flow
+never produces.
 
 Merged from:
   0507-01-net-ethernet-qualcomm-ppe-offload-netfilter-flowtables.patch
@@ -14,6 +33,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/Makefile
@@ -1494,7 +1514,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +#endif
 --- a/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
 +++ b/drivers/net/ethernet/qualcomm/ppe/ppe_port.c
-@@ -16,6 +16,7 @@
+@@ -17,6 +17,7 @@
  
  #include "edma_port.h"
  #include "ppe.h"
@@ -1502,7 +1522,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  #include "ppe_port.h"
  #include "ppe_regs.h"
  
-@@ -1030,6 +1031,8 @@
+@@ -1036,6 +1037,8 @@
  	if (ret)
  		goto err_port_mac_link_up;
  
@@ -1511,7 +1531,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	return;
  
  err_port_mac_link_up:
-@@ -1081,6 +1084,8 @@
+@@ -1087,6 +1090,8 @@
  	int ret, port = ppe_port->port_id;
  	u32 reg;
  

@@ -1,4 +1,4 @@
-From: Felix Fietkau <nbd@nbd.name>
+From: ViKing <viking.yfy@qq.com>
 Date: Mon, 20 May 2024 14:29:58 +0200
 Subject: [PATCH] net: ethernet: mtk_eth_soc: use napi_build_skb()
 
@@ -8,6 +8,8 @@ can allocate skbs in bulk, which helps improve the performance.
 Signed-off-by: Felix Fietkau <nbd@nbd.name>
 ---
 
+Original-author: Felix Fietkau <nbd@nbd.name>
+Signed-off-by: ViKing <viking.yfy@qq.com>
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 @@ -2479,7 +2479,7 @@ static int mtk_poll_rx(struct napi_struc

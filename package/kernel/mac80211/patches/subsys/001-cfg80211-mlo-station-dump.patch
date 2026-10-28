@@ -1,9 +1,36 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: P Praneesh <praneesh.p@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: cfg80211: report complete per-link station dumps
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Remove the link level statistics handling from nl80211_send_station() and
+drop the unused link_stats parameter from its signature and callers. The
+removed code iterated over each MLO link and attempted to send link
+specific station data through NL80211_ATTR_MLO_LINKS, but this logic was
+never used because link_stats was always false.
+
+Add a helper function nl80211_put_sta_info_common() to pack the station-
+level (aggregated) STA information into a netlink message. This prepares
+the code for future enhancements such as supporting fragmented link
+statistics in nl80211_dump_station.
+
+Currently, nl80211_dump_station() relies on the netlink callback's generic
+args array (cb->args[2]) to track the station index during dumps. It also
+processes the entire sinfo structure and transmits it to userspace
+immediately in a single pass.
+
+In MLO scenarios, stations may have multiple links, each with distinct
+statistics. When userspace tools like iw or hostapd request station dumps,
+attempting to pack all per-link stats into a single netlink message can
+easily exceed the default 4KB buffer limit, especially when more than two
+links are active. This results in -EMSGSIZE errors and incomplete data
+delivery.
+
+Currently, when userspace requests station information with link statistics
+using NL80211_CMD_GET_STATION with the NL80211_ATTR_STA_DUMP_LINK_STATS
+flag, the kernel uses the .doit callback (nl80211_get_station) which sends
+a single netlink message. For MLO stations with multiple links, the link
+statistics can be large and may exceed the maximum netlink message size,
+causing the operation to fail with -EMSGSIZE.
 
 Merged from:
   001-wifi-cfg80211-Drop-unused-link-stats-handling-in-nl8.patch
@@ -27,6 +54,8 @@ Link: https://patch.msgid.link/20260614051739.3979947-5-praneesh.p@oss.qualcomm.
 Original-commit: f9202a374ec34e767185cf44f44ed2fbdf6bf053
 Link: https://patch.msgid.link/20260614051739.3979947-6-praneesh.p@oss.qualcomm.com
 
+Signed-off-by: P Praneesh <praneesh.p@oss.qualcomm.com>
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/include/uapi/linux/nl80211.h

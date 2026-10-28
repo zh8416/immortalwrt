@@ -1,9 +1,37 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: ath11k: preserve radio and datapath ownership through recovery
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+ath11k_connect_pdev_htc_service() initialises tx_ce_desc_wq. Firmware crash
+recovery calls it again through ath11k_core_start() ->
+ath11k_wmi_connect(), while a WMI command on a part without credit flow can
+still be sleeping on that queue in ath11k_wmi_cmd_send(). finish_wait()
+then removes the entry from a list head that was reset under it:
+
+ath11k_core_qmi_firmware_ready() serves both the cold boot and the firmware
+crash recovery path. ath11k_mac_allocate() returns early once
+ATH11K_FLAG_REGISTERED is set, so on a recovery the radios are the ones
+mac80211 has held since the cold boot and no allocation takes place.
+
+Since commit 32be3ca4cf78 ("wifi: ath11k: HAL SRNG: don't deinitialize and
+re-initialize again") recovery zeroes the hal state instead of freeing and
+reallocating it, but a failed recovery still calls
+ath11k_hal_srng_deinit(). This frees the ring pointer buffers and the ring
+configuration, which only probe allocates, while the rings still point into
+them. Driver removal then walks the copy engine rings through the freed
+buffers:
+
+ath11k_core_reconfigure_on_crash() clears ATH11K_FLAG_CRASH_FLUSH right
+after ath11k_hal_srng_clear() zeroes the rings, but ath11k_ce_init_pipes()
+and ath11k_dp_alloc() rebuild them only later. A WMI command sent in
+between passes the CRASH_FLUSH check in ath11k_ce_send() and dereferences
+the NULL tail pointer of the cleared ring:
+
+ath11k_core_restart() brings the firmware up outside mac80211's restart, so
+cfg80211 operations keep sending WMI commands while the HTC services
+reconnect and before the firmware reports ready. These commands crash the
+restarting firmware again, and recovery then fails on the unified ready
+timeout:
 
 Merged from:
   955-01-wifi-ath11k-initialise-the-CE-descriptor-waitqueue-o.patch
@@ -15,6 +43,7 @@ Merged from:
 Based on work by:
   Julius Bairaktaris <julius@bairaktaris.de>
 
+Signed-off-by: Julius Bairaktaris <julius@bairaktaris.de>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/wireless/ath/ath11k/ce.c

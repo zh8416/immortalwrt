@@ -1,5 +1,5 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Ziyang Huang <hzyitc@outlook.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] soc: qcom: mdt_loader: support MPD
 
 Normalize the series position without changing the implementation.
@@ -10,6 +10,8 @@ Based on work by:
 
 Original-commit: bf42d84868bc82a9cb334a33930f2d1da24f7070
 
+Signed-off-by: Ziyang Huang <hzyitc@outlook.com>
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/soc/qcom/mdt_loader.c

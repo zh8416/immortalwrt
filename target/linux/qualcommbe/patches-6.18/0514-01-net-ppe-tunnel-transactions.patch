@@ -1,9 +1,25 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] net: ethernet: qualcomm: implement tunnel encap and decap transactions
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Recognize both lightweight-route tunnel metadata and the ip6tnl
+redirect/META forms used by DS-Lite and MAP-E. Dispatch them to a dedicated
+handler which remains fail-closed until the shared tunnel lifecycle exists.
+
+Add the serialized APPE tunnel lookup-table transaction used by tunnel
+termination. The working vendor driver writes a 14-word operand and commits
+it through TL_TBL_OP, then uses a separate get command and result block.
+
+Add the remaining low-level transactions needed by a shared tunnel-port
+lifecycle. Match the vendor order by writing egress tunnel control before
+its 32-word header template, then bind the verified tunnel ID to a
+dedicated virtual port. Add verified tunnel L3-interface and key-generator
+writes.
+
+APPE does not send encapsulated traffic directly through the ordinary
+underlay port. The vendor transaction allocates a tunnel virtual port,
+copies the underlay queue and physical-port identity to it, and only then
+marks its tunnel context active.
 
 Merged from:
   0514-01-net-ethernet-qualcomm-ppe-recognize-tunnel-flow-rules.patch
@@ -14,6 +30,7 @@ Merged from:
 Based on work by:
   Kenneth Kasilag <kenneth@kasilag.me>
 
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/net/ethernet/qualcomm/ppe/Makefile

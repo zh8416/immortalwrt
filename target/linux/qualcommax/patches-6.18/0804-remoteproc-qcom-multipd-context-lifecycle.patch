@@ -1,9 +1,24 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Manikanta Mylavarapu <quic_mmanikan@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] remoteproc: qcom: implement multi-PD interrupts and context ownership
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+In multipd model, root & user pd remoteproc's interrupts are different.
+User pd needs additional interrupts like spawn. Instead of going with
+qcom_q6v5_init(), we defined a new function to register userpd rproc
+interrupts in mpd driver. Since userpd rproc uses some of common interrupts
+like fatal, ready, static is removed from ISR handler and used in userpd
+interrupt registration.
+
+It adds support to bring up remoteproc's on multipd model. Pd means
+protection domain. It's similar to process in Linux. Here QDSP6 processor
+runs each wifi radio functionality on a separate process. One process can't
+access other process resources, so this is termed as PD i.e protection
+domain.
+
+Split root and user protection-domain state while validating ASID slots and
+unwinding child resources before releasing their remoteproc contexts.
+Retain the base driver, clock enablement, IPQ5018 support, boot arguments
+and MSA policy as independent patches.
 
 Merged from:
   0804-remoteproc-qcom-q6v5-Add-multipd-interrupts-support.patch
@@ -18,6 +33,9 @@ Based on work by:
 Original-commit: cae691d32306966065df869fa7424728d1b16b14
 Original-commit: 3f61ff1fb5c90f8b6c28a3a2b4a29203000ee585
 
+Signed-off-by: Manikanta Mylavarapu <quic_mmanikan@quicinc.com>
+Signed-off-by: Ziyang Huang <hzyitc@outlook.com>
+Signed-off-by: George Moussalem <george.moussalem@outlook.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/drivers/remoteproc/Kconfig

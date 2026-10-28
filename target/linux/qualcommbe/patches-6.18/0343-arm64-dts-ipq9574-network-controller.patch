@@ -1,9 +1,15 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Luo Jie <quic_luoj@quicinc.com>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] arm64: dts: qcom: describe IPQ9574 PPE EDMA and MDIO topology
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+PPE is the packet process engine on the Qualcomm IPQ platform, which is
+connected with the external switch or PHY device via the UNIPHY (PCS).
+
+Add EDMA (Ethernet DMA) device tree node for IPQ9574 to enable ethernet
+support.
+
+The MDIO bus master block is used to accessing the MDIO slave device (such
+as PHY device), the dedicated MDIO PINs needs to be configured.
 
 Merged from:
   0343-arm64-dts-qcom-Add-IPQ9574-PPE-base-device-node.patch
@@ -19,6 +25,9 @@ Original-commit: 2f31a177b001b99234b373afd2f8ba2d65b4c852
 Original-commit: fc1fe4649dc62ecfffc94b76d908d66905d52e16
 Original-commit: 77b24a2ce99bc8d23aacbd101b28e57b7b79f406
 
+Signed-off-by: Luo Jie <quic_luoj@quicinc.com>
+Signed-off-by: Alexandru Gagniuc <mr.nuke.me@gmail.com>
+Signed-off-by: Pavithra R <quic_pavir@quicinc.com>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq9574.dtsi

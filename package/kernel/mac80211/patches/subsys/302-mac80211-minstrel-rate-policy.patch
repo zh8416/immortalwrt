@@ -1,9 +1,27 @@
-From: ViKing <viking.yfy@qq.com>
-Date: Tue, 27 Oct 2026 09:40:00 +0800
+From: Felix Fietkau <nbd@nbd.name>
+Date: Wed, 28 Oct 2026 13:34:14 +0800
 Subject: [PATCH] wifi: mac80211: stabilize Minstrel rate selection and downgrade policy
 
-Consolidate consecutive changes within this functional responsibility.
-Retain the final implementation and its error handling directly.
+Add missing braces to avoid issues with e.g. using additions in the div
+expression
+
+In some scenarios when there is a lot of fluctuation in packet error rates,
+rate switching can be amplified when the statistics get skewed by time
+slots with very few tries. Make the input data to the moving average more
+smooth by adding the success/attempts count from the last stats window as
+well. This has the advantage of smoothing the data without introducing any
+extra lag to sampling rates. This significantly improves rate stability on
+a strong test link subjected to periodic noise bursts generated with a SDR
+
+The current fallback code for fast rate switching on potentially failing
+rates is triggering too often if there is some strong noise on the channel.
+This can lead to wild fluctuations in the rate selection. Additionally,
+switching down to max_prob_rate can create a significant gap down in
+throughput, especially when using only 2 spatial streams, because
+max_prob_rate is limited to using fewer streams than the max_tp rates. In
+order to improve throughput without reducing reliability too much, use the
+rate downgrade code for the max_prob_rate only, and allow the non-
+downgraded max_prob_rate to use as many spatial streams as the max_tp rates
 
 Merged from:
   302-mac80211-minstrel_ht-fix-MINSTREL_FRAC-macro.patch
@@ -13,6 +31,7 @@ Merged from:
 Based on work by:
   Felix Fietkau <nbd@nbd.name>
 
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
 Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/net/mac80211/rc80211_minstrel_ht.c
