@@ -123,7 +123,7 @@ jobs:
           
           # 1. 发布通用架构包 (luci, base, packages 等)
           # 注意：这里的目录名根据你实际编译出来的来，如果目录名不一样请自行增删
-          for d in base luci packages routing telephony; do
+          for d in base luci packages kenzok routing telephony; do
             [ -d "../bin/packages/$ARCH/$d" ] || continue
             mkdir -p "feed/$FEED_BASE/$ARCH/$d"
             rsync -a --delete "../bin/packages/$ARCH/$d/" "feed/$FEED_BASE/$ARCH/$d/"
