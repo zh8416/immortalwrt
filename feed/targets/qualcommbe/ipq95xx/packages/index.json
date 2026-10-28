@@ -4,7 +4,7 @@
   "packages": {
     "autocore": "44",
     "automount": "10",
-    "base-files": "1~bb667f8",
+    "base-files": "1~ed5072e",
     "block-mount": "2026.10.18~907cf449-r2",
     "dropbear": "2026.94-r3",
     "fstools": "2026.10.18~907cf449-r2",

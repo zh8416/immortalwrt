@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "architecture": "aarch64_cortex-a53",
+  "packages": {
+    "dockermanager": "0.1.2-r1",
+    "floatip": "1.1.0-r1",
+    "linkease-app-entry": "3.0.23-r1",
+    "luci-i18n-clashoo-zh-cn": "1.31.0-r9",
+    "luci-lib-linkeaseauth": "1.2.1-r1",
+    "luci-lib-taskd": "1.0.26",
+    "luci-lib-xterm": "4.18.0",
+    "taskd": "1.0.3-r2",
+    "vmease": "0.8.7-r2"
+  }
+}
