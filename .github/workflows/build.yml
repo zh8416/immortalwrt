@@ -108,3 +108,16 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+
+# --- 新增：发布软件包到 gh-pages 分支 ---
+      - name: Deploy Packages to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # 这里的路径请根据你的固件输出目录调整，通常 .apk 文件在这个目录下
+          publish_dir: ./bin/targets/qualcommbe/ipq95xx/packages 
+          publish_branch: gh-pages
+          # 把它放到以架构命名的子目录中，方便区分
+          destination_dir: aarch64_cortex-a53
+          # 不保留旧文件，每次纯覆盖
+          keep_files: false
