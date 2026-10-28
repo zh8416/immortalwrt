@@ -144,14 +144,10 @@ export function synchronize(uci, data, upstream4, target) {
 	if (previous != role) {
 		let context = saved_lan(previous_state);
 		let manual_lan = !!previous_state?.manual_lan || context && !equal(context, lan_context(uci));
-<<<<<<< HEAD
-		state = { version: 1, mode: role, options: [], created: [], manual_lan: !!manual_lan, dhcpv4_defaults: true,
-=======
 		// Carry missing managed sections forward as deletion markers across
 		// role changes, instead of recreating an explicitly removed section.
 		let deleted = map(filter(previous_state?.options || [], o => !uci.get_all(o.config, o.sid)), option => ({ ...option }));
 		state = { version: 1, mode: role, options: deleted, created: [], manual_lan: !!manual_lan, dhcpv4_defaults: true,
->>>>>>> upstream/owrt
 			subnet_done: role != 'sub' || !!manual_lan, lan: lan_context(uci) };
 		recorder = state;
 		for (let group in [ data.common, data.roles[role] ])
