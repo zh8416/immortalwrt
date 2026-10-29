@@ -1,0 +1,160 @@
+#!/bin/sh /etc/rc.common
+# The radios choose ring ownership at probe. Changing it requires a reboot.
+# shellcheck disable=SC2034
+START=19
+USE_PROCD=1
+
+PENDING=/etc/nss-wifi.pending
+LOCK=/var/run/nss-wifi-start.lock
+
+wifi_load_host() {
+	modprobe ath11k 2>/dev/null
+	modprobe ath11k_ahb 2>/dev/null
+	modprobe ath11k_pci 2>/dev/null
+}
+
+nss_state_has() {
+	local state
+	[ -r "$dir/state" ] || return 1
+	read -r state < "$dir/state" || return 1
+	case " $state " in
+		*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
+nss_start() {
+	local dir fw i param token
+
+	dir=/sys/bus/platform/devices/39000000.nss
+	# Check before touching pending or boot: repeated service actions must
+	# leave an already healthy data plane and its boot guard intact.
+	if nss_state_has ready=1; then
+		[ "$(uci -q get nss-wifi.general.offload)" = 1 ] ||
+			logger -t nss-wifi "offload is running; reboot to apply the changed setting"
+		return 0
+	fi
+	if nss_state_has running=1; then
+		logger -t nss-wifi "core is running with incomplete WLAN state; reboot to recover"
+		return 1
+	fi
+	[ "$(uci -q get nss-wifi.general.offload)" = 1 ] || {
+		wifi_load_host
+		return 0
+	}
+	[ -e "$PENDING" ] && {
+		logger -t nss-wifi "offload skipped: $(cat "$PENDING"); remove $PENDING to retry after reboot"
+		wifi_load_host
+		return 0
+	}
+	grep -qsE 'qcom,ipq(8074|6018)-wifi' /proc/device-tree/soc*/wifi@*/compatible || {
+		wifi_load_host
+		return 0
+	}
+	if ls -d /sys/class/ieee80211/phy* >/dev/null 2>&1; then
+		logger -t nss-wifi "WLAN already probed; reboot to select offload"
+		return 1
+	fi
+	token="$(cat /proc/sys/kernel/random/boot_id):$$"
+	echo "$token" > "$PENDING"
+	sync
+	modprobe nss-wifi-drv 2>/dev/null
+	[ -e "$dir/state" ] || {
+		logger -t nss-wifi "no NSS core; using the host path"
+		rm -f "$PENDING"
+		wifi_load_host
+		return 0
+	}
+	fw=$(uci -q get nss-wifi.general.firmware) &&
+		printf %s "$fw" > /sys/module/nss_wifi_drv/parameters/firmware
+	for param in $(uci -q get nss-wifi.general.param); do
+		case "$param" in
+			*=*) ;;
+			*) continue ;;
+		esac
+		case "${param%%=*}" in
+			*[!a-zA-Z0-9_]*|'') continue ;;
+		esac
+		if ! echo "${param#*=}" > "/sys/module/nss_wifi_drv/parameters/${param%%=*}" 2>/dev/null; then
+			logger -t nss-wifi "parameter rejected: ${param%%=*}"
+		fi
+	done
+	modprobe ath11k 2>/dev/null
+	if ! echo 1 > /sys/module/ath11k/parameters/nss_offload 2>/dev/null; then
+		logger -t nss-wifi "ath11k offload unavailable; using the host path"
+		rm -f "$PENDING"
+		wifi_load_host
+		return 0
+	fi
+	if ! echo 2 > /sys/module/ath11k/parameters/frame_mode 2>/dev/null; then
+		echo 0 > /sys/module/ath11k/parameters/nss_offload 2>/dev/null
+		rm -f "$PENDING"
+		wifi_load_host
+		return 0
+	fi
+	modprobe ath11k_ahb 2>/dev/null
+	modprobe ath11k_pci 2>/dev/null
+	i=0
+	while [ "$i" -lt 60 ]; do
+		nss_state_has rings_ready=1 && break
+		sleep 1
+		i=$((i + 1))
+	done
+	if ! nss_state_has rings_ready=1; then
+		echo "WLAN ring descriptions incomplete" > "$PENDING"
+		logger -t nss-wifi "WLAN ring descriptions incomplete; NSS remains stopped"
+		return 1
+	fi
+	if ! echo 1 > "$dir/boot"; then
+		echo "NSS core boot failed" > "$PENDING"
+		logger -t nss-wifi "NSS core boot failed"
+		return 1
+	fi
+	if ! echo 1 > "$dir/wifi_start" || ! nss_state_has ready=1; then
+		echo "WiFiLi initialization incomplete" > "$PENDING"
+		logger -t nss-wifi "WiFiLi initialization incomplete; reboot to recover"
+		return 1
+	fi
+	# An older checker cannot clear a newer boot's failure marker.
+	(
+	 # The delayed checker must not retain rc.common/procd's flock.
+	 # BusyBox ash supports the same fd 1000 used by procd.sh.
+	 # shellcheck disable=SC3023
+	 exec 1000>&-
+	 sleep 120
+	 [ "$(cat "$PENDING" 2>/dev/null)" = "$token" ] &&
+	 nss_state_has ready=1 || exit 0
+	 rm -f "$PENDING"
+	 sync
+	 logger -t nss-wifi "bring-up survived; all WLAN instances ready"
+	) </dev/null >/dev/null 2>&1 &
+}
+
+start_service() {
+	local owner ret
+	if ! mkdir "$LOCK" 2>/dev/null; then
+		owner=$(cat "$LOCK/pid" 2>/dev/null)
+		if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
+			rm -f "$LOCK/pid"
+			rmdir "$LOCK" 2>/dev/null
+			mkdir "$LOCK" 2>/dev/null || return 1
+		else
+			logger -t nss-wifi "another bring-up is in progress"
+			return 1
+		fi
+	fi
+	echo $$ > "$LOCK/pid"
+	nss_start
+	ret=$?
+	rm -f "$LOCK/pid"
+	rmdir "$LOCK" 2>/dev/null
+	return "$ret"
+}
+
+reload_service() {
+	start_service
+}
+
+stop_service() {
+	logger -t nss-wifi "WLAN ring ownership is chosen at probe; reboot to change it"
+}
