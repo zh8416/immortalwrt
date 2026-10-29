@@ -22,6 +22,16 @@
 
 #include "nss_fw.h"
 
+/* A NO WIFI kernel can omit the wireless pointer from struct net_device. */
+static inline bool nss_dev_is_wifi(const struct net_device *dev)
+{
+#if IS_ENABLED(CONFIG_CFG80211_HEADERS)
+	return dev->ieee80211_ptr;
+#else
+	return false;
+#endif
+}
+
 /* Ring geometry. The index page always describes 16 host-to-firmware and 15
  * firmware-to-host slots whatever the SoC populates, so the arrays are sized
  * by the page and the counts say how many are real.
@@ -72,6 +82,7 @@
 #define NSS_H2N_FLAG_BUFFER_REUSABLE	0x8000
 
 unsigned int nss_pool_ceiling(void);
+unsigned int nss_wifili_expected(void);
 
 /* The firmware chooses its own offset inside a receive buffer, so the buffer
  * it is given is the head of the allocation and it reports where the payload

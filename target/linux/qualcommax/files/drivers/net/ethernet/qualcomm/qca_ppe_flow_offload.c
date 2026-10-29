@@ -1817,9 +1817,18 @@ MODULE_PARM_DESC(cpu_xmit,
  * driver only queues them on the device. The device has to take Ethernet
  * frames as the nexthop builds them, with no tag or session to push.
  */
+static bool ppe_dev_is_wifi(const struct net_device *dev)
+{
+#if IS_ENABLED(CONFIG_CFG80211_HEADERS)
+	return dev->ieee80211_ptr;
+#else
+	return false;
+#endif
+}
+
 static bool ppe_cpu_xmit_ok(const struct ppe_flow_data *data)
 {
-	return ppe_cpu_xmit && !data->odev->ieee80211_ptr &&
+	return ppe_cpu_xmit && !ppe_dev_is_wifi(data->odev) &&
 	       net_eq(dev_net(data->odev), &init_net) &&
 	       netif_running(data->odev) &&
 	       data->odev->type == ARPHRD_ETHER &&
@@ -3137,8 +3146,10 @@ static bool ppe_flow_bridge_endpoint(struct qca_ppe_priv *priv,
 {
 	struct dsa_port *dp;
 
+	#if IS_ENABLED(CONFIG_CFG80211_HEADERS)
 	if (dev->ieee80211_ptr)
 		return dev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP;
+#endif
 	dp = dsa_port_from_netdev(dev);
 	return !IS_ERR(dp) && dp->ds == &priv->ds;
 }
@@ -3155,7 +3166,7 @@ static int ppe_flow_bridge_path(struct qca_ppe_priv *priv,
 	if (!idev || idev == odev ||
 	    !ppe_flow_bridge_endpoint(priv, idev) ||
 	    !ppe_flow_bridge_endpoint(priv, odev) ||
-	    (idev->ieee80211_ptr && odev->ieee80211_ptr))
+	    (ppe_dev_is_wifi(idev) && ppe_dev_is_wifi(odev)))
 		return 0;
 	master = netdev_master_upper_dev_get_rcu(idev);
 	if (master && netif_is_bridge_master(master) &&

@@ -518,13 +518,13 @@ static void nss_core_halt(struct nss_core *core)
  * connections and the exception path take; the firmware fills whatever
  * ceiling it is given, and each buffer costs a 4 KB slab object.
  */
-static unsigned int nss_pool_size = 16384;
+static unsigned int nss_pool_size;
 module_param_named(pool_size, nss_pool_size, uint, 0644);
-MODULE_PARM_DESC(pool_size, "empty buffers the host will lend the firmware");
+MODULE_PARM_DESC(pool_size, "empty buffers lent to firmware; 0 selects 16384 with WLAN, 8192 without");
 
-static unsigned int nss_pool_low = 4352;
+static unsigned int nss_pool_low;
 module_param_named(pool_low, nss_pool_low, uint, 0644);
-MODULE_PARM_DESC(pool_low, "buffers below which the firmware asks for more");
+MODULE_PARM_DESC(pool_low, "refill threshold; 0 selects 4352 with WLAN, 4096 without");
 /* The firmware refuses a span narrower than the ring the pool is topped up
  * through, so the asked-for ceiling is not always the one that takes effect.
  * The table of lent buffers is sized from the same answer, and is allocated
@@ -532,6 +532,12 @@ MODULE_PARM_DESC(pool_low, "buffers below which the firmware asks for more");
  */
 unsigned int nss_pool_ceiling(void)
 {
+	bool wlan = nss_wifili_expected();
+
+	if (!nss_pool_size)
+		nss_pool_size = wlan ? 16384 : 8192;
+	if (!nss_pool_low)
+		nss_pool_low = wlan ? 4352 : 4096;
 	if (nss_pool_low < NSS_RING_ENTRIES)
 		nss_pool_low = NSS_RING_ENTRIES;
 	if (nss_pool_size < 2 * nss_pool_low)

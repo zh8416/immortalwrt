@@ -22,6 +22,7 @@
 #include <linux/ieee80211.h>
 #include <linux/if_ether.h>
 #include <linux/igmp.h>
+#include <linux/of.h>
 #include <linux/pci.h>
 #include <linux/seq_file.h>
 #include <linux/sysfs.h>
@@ -116,6 +117,15 @@ struct nss_wifili_ctx {
  */
 static struct nss_core *nss_wifili_core;
 static DEFINE_MUTEX(nss_wifili_lock);
+
+/* Fixed before either bus driver probes. Zero keeps the non-WLAN data plane
+ * independent of ath11k; the service selects only installed, usable buses.
+ */
+#define NSS_WLAN_AHB	BIT(0)
+#define NSS_WLAN_PCI	BIT(1)
+static unsigned int nss_wlan = NSS_WLAN_AHB | NSS_WLAN_PCI;
+module_param_named(wlan, nss_wlan, uint, 0444);
+MODULE_PARM_DESC(wlan, "WLAN buses: bit 0 AHB, bit 1 PCI; 0 for non-WLAN offload only");
 
 /* One wifili instance: what the WLAN driver said about its rings, and what
  * the firmware made of them. Instance 0 carries the radios inside the SoC,
@@ -216,6 +226,9 @@ int nss_wifi_soc_register(const struct nss_wifi_soc *desc)
 	int i;
 
 	guard(mutex)(&nss_wifili_lock);
+
+	if (!(nss_wlan & (desc->external ? NSS_WLAN_PCI : NSS_WLAN_AHB)))
+		return -EOPNOTSUPP;
 
 	if (desc->num_tcl > NSS_WIFI_MAX_TCL_RINGS ||
 	    desc->num_reo > NSS_WIFI_MAX_REO_RINGS ||
@@ -2813,8 +2826,6 @@ void nss_wifili_halted(struct nss_core *core)
 	nss_wifili_forget(core);
 }
 
-static unsigned int nss_wifili_expected(void);
-
 /* Called under the WiFiLi mutex; the core mutex follows it everywhere. */
 static int nss_wifili_start_locked(struct nss_core *core, struct seq_file *s)
 {
@@ -2863,15 +2874,28 @@ void nss_wifili_resume(struct nss_core *core)
 	dev_info(core->dev, "Wi-Fi data plane resume: %d\n", ret);
 }
 
-/* Count physical targets too, so a late PCI probe cannot look complete. */
-static unsigned int nss_wifili_expected(void)
+/* Count enabled physical targets on the selected buses, including a PCI
+ * target that has not probed yet. No WLAN is a valid standalone NSS mode.
+ */
+unsigned int nss_wifili_expected(void)
 {
+	static const struct of_device_id ahb[] = {
+		{ .compatible = "qcom,ipq8074-wifi" },
+		{ .compatible = "qcom,ipq6018-wifi" },
+		{ }
+	};
 	struct pci_dev *pdev = NULL;
-	unsigned int expected = 1;
+	struct device_node *np;
+	unsigned int expected = 0;
 
-	while ((pdev = pci_get_device(0x17cb, 0x1104, pdev)))
-		if (pci_resource_start(pdev, 0) <= U32_MAX)
-			expected++;
+	if (nss_wlan & NSS_WLAN_AHB)
+		for_each_matching_node(np, ahb)
+			if (of_device_is_available(np))
+				expected++;
+	if (nss_wlan & NSS_WLAN_PCI)
+		while ((pdev = pci_get_device(0x17cb, 0x1104, pdev)))
+			if (pci_resource_start(pdev, 0) <= U32_MAX)
+				expected++;
 	return expected;
 }
 
@@ -2900,9 +2924,9 @@ ssize_t nss_wifili_state(struct nss_core *core, char *buf)
 	rings_ready = registered == expected && described == expected;
 	ready = core->running && rings_ready && started == expected;
 	len = sysfs_emit(buf,
-		"running=%u expected=%u registered=%u described=%u started=%u rings_ready=%u ready=%u vdevs=%u peers=%u\n",
+		"running=%u expected=%u registered=%u described=%u started=%u rings_ready=%u ready=%u vdevs=%u peers=%u wlan=%u\n",
 		core->running, expected, registered, described, started,
-		rings_ready, ready, vdevs, peers);
+		rings_ready, ready, vdevs, peers, nss_wlan);
 	for (i = 0; i < ARRAY_SIZE(nss_wifili_socs); i++) {
 		soc = &nss_wifili_socs[i];
 		len += sysfs_emit_at(buf, len,

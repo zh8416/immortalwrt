@@ -89,7 +89,7 @@ bool nss_redir_is_usb(const struct net_device *dev)
 	const struct device *parent = dev->dev.parent;
 
 	return dev->type == ARPHRD_ETHER && dev->addr_len == ETH_ALEN &&
-	       !dev->ieee80211_ptr && net_eq(dev_net(dev), &init_net) &&
+	       !nss_dev_is_wifi(dev) && net_eq(dev_net(dev), &init_net) &&
 	       parent && parent->bus && !strcmp(parent->bus->name, "usb");
 }
 
@@ -108,7 +108,7 @@ static bool nss_redir_wanted(const struct net_device *dev)
 		return dev->mtu <= ETH_DATA_LEN;
 
 	return dev->type == ARPHRD_RAWIP ||
-	       (dev->type == ARPHRD_ETHER && dev->ieee80211_ptr &&
+	       (dev->type == ARPHRD_ETHER && nss_dev_is_wifi(dev) &&
 		!nss_wifili_owns(dev));
 }
 

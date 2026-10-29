@@ -327,7 +327,7 @@ static bool nss_flow_is_wireless(int ifindex)
 
 	dev = dev_get_by_index_rcu(&init_net, ifindex);
 
-	return dev && dev->ieee80211_ptr;
+	return dev && nss_dev_is_wifi(dev);
 }
 
 /* A connection this firmware may carry has a station or a redirected device

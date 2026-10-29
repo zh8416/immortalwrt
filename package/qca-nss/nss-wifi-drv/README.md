@@ -1,4 +1,4 @@
-# NSS Wi-Fi control
+# NSS data-plane control
 
 The service chooses WLAN ring ownership before ath11k probes. Change
 `nss-wifi.general.offload` or firmware parameters and reboot to apply them.
@@ -17,9 +17,30 @@ debugfs (normally `/sys/bus/platform/devices/39000000.nss`):
 | `flow_stats` | read | IPv4, IPv6, total installed bidirectional rules, total firmware capacity. |
 
 `ready=1` requires a running core and every expected on-chip/eligible PCI
-instance. VDEVs are created later by netifd and are not a boot prerequisite.
+instance on the selected buses. Disabled device-tree WLAN nodes and absent
+bus modules are excluded. VDEVs are created later by netifd and are not a
+boot prerequisite.
 The persistent guard is cleared only after 120 seconds and a fresh healthy
 state check. Repeated service actions preserve a healthy running instance.
+
+The package is selected independently of ath11k on IPQ60xx and IPQ807x.
+RE-CS-07 and NO WIFI images can run the NSS core without loading ath11k,
+waiting for WLAN rings, or issuing WiFiLi initialization messages. The
+service derives the read-only `wlan` module parameter from the build marker,
+installed modules and enabled hardware: bit 0 selects AHB, bit 1 PCI, and
+zero selects non-WLAN offload only. Apply a change by rebooting.
+
+With no WLAN targets the automatic payload pool uses 8192 buffers with a
+4096-buffer refill threshold, instead of 16384/4352. Explicit nonzero
+`pool_size` and `pool_low` parameters override these defaults. The shared
+firmware memory requests and descriptor pool are retained for forwarding.
+
+Non-WLAN functions include supported IPv4/IPv6 TCP/UDP routing and IPv4 NAT
+through USB Ethernet/raw-IP redirect devices, plus the routed-multicast
+back end and its VLAN/PPPoE handling. Ordinary wired unicast remains on PPE.
+This driver provides no general crypto, IPsec or arbitrary tunnel offload
+API. Firmware capabilities alone do not make an unimplemented protocol
+available. Unsupported flows remain in software.
 
 An authorization transport or firmware error stops the NSS processor before
 returning the error. Shared DMA is retained until WLAN reset has stopped the

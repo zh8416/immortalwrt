@@ -168,7 +168,7 @@ static unsigned int nss_br_hook(void *priv, struct sk_buff *skb,
 	 */
 	rin = nss_br_real(state->in, &vid, &vtpid);
 	rout = nss_br_real(state->out, &vid, &vtpid);
-	if ((!rin || !rin->ieee80211_ptr) && (!rout || !rout->ieee80211_ptr))
+	if ((!rin || !nss_dev_is_wifi(rin)) && (!rout || !nss_dev_is_wifi(rout)))
 		return NF_ACCEPT;
 
 	/* A UDP sender may fall silent once the reply starts, so its
