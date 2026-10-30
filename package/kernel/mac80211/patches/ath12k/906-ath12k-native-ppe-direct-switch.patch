@@ -1215,7 +1215,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	s->reg_start[1] = HAL_SEQ_WCSS_UMAC_TCL_REG + HAL_TCL1_RING_HP;
 --- /dev/null
 +++ b/drivers/net/wireless/ath/ath12k/wifi7/ppe_ds.c
-@@ -0,0 +1,1519 @@
+@@ -0,0 +1,1526 @@
 +// SPDX-License-Identifier: BSD-3-Clause-Clear
 +/*
 + * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
@@ -1291,7 +1291,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	struct ath12k_vif *vif;
 +	struct net_device *dev;
 +	int port, bank;
-+	bool closing, drained, direct;
++	bool reserved, closing, drained, direct;
 +};
 +
 +struct ath12k_ds_peer {
@@ -1814,9 +1814,10 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	seq_printf(seq, "tx_acked:%lld tx_dropped:%lld\n",
 +		   atomic64_read(&ds->tx_acked), atomic64_read(&ds->tx_dropped));
 +	for (i = 0; i < ATH12K_DS_VP_COUNT; i++)
-+		if (ds->vps[i].dev)
++		if (ds->vps[i].reserved)
 +			seq_printf(seq, "vp:%d device:%s port:%d bank:%d closing:%u direct:%u\n",
-+				   i, ds->vps[i].dev->name, ds->vps[i].port,
++				   i, ds->vps[i].dev ? ds->vps[i].dev->name : "<removed>",
++				   ds->vps[i].port,
 +				   ds->vps[i].bank, ds->vps[i].closing, ds->vps[i].direct);
 +	mutex_unlock(&ds->control_lock);
 +	return 0;
@@ -2127,7 +2128,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +		if (ds->vps[i].vif == vif)
 +			return ds->vps[i].closing ? -ESHUTDOWN : ds->vps[i].port;
 +	for (i = 0; i < ATH12K_DS_VP_COUNT; i++)
-+		if (!ds->vps[i].dev)
++		if (!ds->vps[i].reserved)
 +			break;
 +	if (i == ATH12K_DS_VP_COUNT || !wdev || !wdev->netdev)
 +		return -ENOSPC;
@@ -2159,6 +2160,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +	ath12k_hif_read32(ds->dp->ab, ATH12K_DS_VP_TABLE + i * 4);
 +	/* Publish direct delivery only after all tracked peer submissions. */
 +	vp = &ds->vps[i];
++	vp->reserved = true;
 +	vp->vif = vif;
 +	vp->dev = wdev->netdev;
 +	dev_hold(vp->dev);
@@ -2475,10 +2477,15 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +				if (ret || !vp->drained)
 +					fault = true;
 +			} else {
-+				/* Keep the VP/bank reserved on an unacknowledged delete.
-+				 * No reference to the soon-freed mac80211 vif survives.
++				/* Software references end with the interface. The reserved
++				 * bit keeps unacknowledged VP/bank leases unavailable even
++				 * after both vif and netdev pointers have been withdrawn.
 +				 */
 +				vp->vif = NULL;
++				if (vp->dev) {
++					dev_put(vp->dev);
++					vp->dev = NULL;
++				}
 +				if (!deleted || !vp->drained || ds->faulted)
 +					continue;
 +				ath12k_hif_write32(dp->ab, ATH12K_DS_VP_TABLE + i * 4, 0);
@@ -2489,7 +2496,6 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +					continue;
 +				}
 +				ath12k_dp_tx_put_bank_profile(dp, vp->bank);
-+				dev_put(vp->dev);
 +				memset(vp, 0, sizeof(*vp));
 +			}
 +		}
@@ -2519,7 +2525,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +		goto unlock;
 +	}
 +	for (i = 0; i < ATH12K_DS_VP_COUNT; i++)
-+		if (ds->vps[i].dev) {
++		if (ds->vps[i].reserved) {
 +			err = qcom_ppe_ds_vp_route(ds->handle, ds->vps[i].port, false);
 +			if (err)
 +				ath12k_warn(dp->ab,
@@ -2622,10 +2628,11 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 +		kfree(peer);
 +	}
 +	for (i = 0; i < ATH12K_DS_VP_COUNT; i++) {
-+		if (!ds->vps[i].dev)
++		if (!ds->vps[i].reserved)
 +			continue;
 +		ath12k_dp_tx_put_bank_profile(dp, ds->vps[i].bank);
-+		dev_put(ds->vps[i].dev);
++		if (ds->vps[i].dev)
++			dev_put(ds->vps[i].dev);
 +	}
 +	/* The caller must already have synchronized WLAN IRQ/NAPI and stopped
 +	 * WLAN DMA before releasing the shared rings and completion buffers.

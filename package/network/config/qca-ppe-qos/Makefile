@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=qca-ppe-qos
-PKG_VERSION:=20261026
-PKG_RELEASE:=1
+PKG_VERSION:=20261030
+PKG_RELEASE:=3
 PKG_LICENSE:=GPL-2.0-only
 PKG_LICENSE_FILES:=
 PKG_MAINTAINER:=Julius Bairaktaris <julius@bairaktaris.de>
@@ -16,6 +16,8 @@ define Package/qca-ppe-qos
   DEPENDS:=@TARGET_qualcommax +KERNEL_DCB:dcb +tc +kmod-sched-flower +kmod-sched-act-pedit \
 	+kmod-sched-prio +kmod-sched-ets +kmod-sched-mqprio +kmod-sched-act-police
   PKGARCH:=all
+  CONFLICTS:=ppe-qos
+  EXTRA_DEPENDS:=$(if $(CONFIG_USE_APK),!ppe-qos (>=0))
 endef
 
 define Package/qca-ppe-qos/description
@@ -39,6 +41,9 @@ define Package/qca-ppe-qos/install
 	$(INSTALL_BIN) ./files/qca-ppe-qos.init $(1)/etc/init.d/qca-ppe-qos
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/net
 	$(INSTALL_DATA) ./files/qca-ppe-qos.hotplug $(1)/etc/hotplug.d/net/20-qca-ppe-qos
+	$(INSTALL_DIR) $(1)/etc/uci-defaults $(1)/usr/share/qca-ppe-qos
+	$(INSTALL_BIN) ./files/qca-ppe-qos.migrate $(1)/etc/uci-defaults/91-qca-ppe-qos-migrate
+	$(INSTALL_CONF) ./files/qca-ppe-qos.config $(1)/usr/share/qca-ppe-qos/config.default
 endef
 
 $(eval $(call BuildPackage,qca-ppe-qos))
