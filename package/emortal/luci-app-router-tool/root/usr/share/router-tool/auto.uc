@@ -132,22 +132,13 @@ export function synchronize(uci, data, upstream4, target) {
 	if (uci.get('network', sid, 'router_tool_ula_cleanup_done') != '1')
 		set('network', sid, { ula_prefix: null, router_tool_ula_cleanup_done: '1' });
 	if (ap) return keys(changed);
-	// Older ownership records only watched LAN DHCPv4 and could retain an
-	// inherited disabled server. Initialize it once, preserving later edits.
-	let dhcpv4_defaults = state && previous == role && !state.dhcpv4_defaults;
-	if (dhcpv4_defaults) {
-		recorder = state;
-		set('dhcp', 'lan', { ignore: data.common.dhcp.lan.ignore, dhcpv4: data.common.dhcp.lan.dhcpv4 });
-		recorder = null;
-		state.dhcpv4_defaults = true;
-	}
 	if (previous != role) {
 		let context = saved_lan(previous_state);
 		let manual_lan = !!previous_state?.manual_lan || context && !equal(context, lan_context(uci));
 		// Carry missing managed sections forward as deletion markers across
 		// role changes, instead of recreating an explicitly removed section.
 		let deleted = map(filter(previous_state?.options || [], o => !uci.get_all(o.config, o.sid)), option => ({ ...option }));
-		state = { version: 1, mode: role, options: deleted, created: [], manual_lan: !!manual_lan, dhcpv4_defaults: true,
+		state = { version: 1, mode: role, options: deleted, created: [], manual_lan: !!manual_lan,
 			subnet_done: role != 'sub' || !!manual_lan, lan: lan_context(uci) };
 		recorder = state;
 		for (let group in [ data.common, data.roles[role] ])
@@ -228,6 +219,5 @@ export function synchronize(uci, data, upstream4, target) {
 			set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
 		}
 	}
-	if (dhcpv4_defaults) set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
 	return keys(changed);
 }

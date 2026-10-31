@@ -222,7 +222,10 @@ function checkSnapshot(state, live) {
 }
 
 function verifyLiveSnapshot(sid, selected, enabled, before) {
-	const configs = [ 'network', 'dhcp', 'firewall', 'wireless' ];
+	const configs = [ 'network', 'dhcp', 'firewall' ];
+	// NO WIFI images have no wireless configuration. Only recheck it when
+	// the form loaded it; errors for existing configurations must still fail.
+	if (Object.hasOwn(before, 'wireless')) configs.push('wireless');
 	return Promise.all(configs.map(config => callLiveConfig(config))).then(values => {
 		const live = Object.fromEntries(configs.map((config, i) => [ config, values[i] ]));
 		if (!enabled && live.network[sid]?.router_tool_ap_state)
@@ -244,10 +247,11 @@ function verifyLiveSnapshot(sid, selected, enabled, before) {
 				if (!Object.keys(changes).length) delete uci.state.changes[config][name];
 			}
 			const removed = uci.state.deletes[config]?.[name];
-			if (Array.isArray(removed)) {
-				const next = removed.filter(option => option != key);
-				if (next.length) uci.state.deletes[config][name] = next;
-				else delete uci.state.deletes[config][name];
+			// LuCI records option deletions as object keys; true removes the
+			// whole section. Drop an option already removed by another editor.
+			if (removed && removed !== true) {
+				delete removed[key];
+				if (!Object.keys(removed).length) delete uci.state.deletes[config][name];
 			}
 		}
 		for (const config of configs) {
@@ -427,22 +431,13 @@ function synchronize(sid, context) {
 	previousSnapshot = readSnapshot(sid, 'router_tool_state', uci.get('network', sid, 'router_tool_auto'));
 	const beforeLan = savedLan(previousSnapshot);
 	if (beforeLan && !equal(beforeLan, lanContext())) previousSnapshot.manual_lan = true;
-	// Migrate the old watch-only DHCPv4 fields once. Actual user overrides
-	// after that baseline remain owned by the user during future switches.
-	const dhcpv4Defaults = previousSnapshot && uci.get('network', sid, 'router_tool_auto') == role && !previousSnapshot.dhcpv4_defaults;
-	if (dhcpv4Defaults) {
-		recorder = previousSnapshot;
-		try { setOptions('dhcp', 'lan', { ignore: context.presets.common.dhcp.lan.ignore, dhcpv4: context.presets.common.dhcp.lan.dhcpv4 }); }
-		finally { recorder = null; }
-		previousSnapshot.dhcpv4_defaults = true;
-	}
 	if (uci.get('network', sid, 'router_tool_auto') != role) {
 		console.info(`[router-tool] Preparing ${role} router presets`);
 		const manualLan = !!previousSnapshot?.manual_lan || !!beforeLan && !equal(beforeLan, lanContext());
 		// Carry missing managed sections forward as deletion markers. Without
 		// this, switching away and back would recreate an explicit deletion.
 		const deleted = (previousSnapshot?.options || []).filter(o => !uci.get(o.config, o.sid)).map(copy);
-		const state = { version: 1, mode: role, options: deleted, created: [], manual_lan: manualLan, dhcpv4_defaults: true,
+		const state = { version: 1, mode: role, options: deleted, created: [], manual_lan: manualLan,
 			subnet_done: role != 'sub' || manualLan, lan: lanContext() };
 		recorder = state;
 		try {
@@ -476,7 +471,6 @@ function synchronize(sid, context) {
 			uci.set('network', sid, 'router_tool_state', finishSnapshot(state));
 		}
 	}
-	if (dhcpv4Defaults) uci.set('network', sid, 'router_tool_state', finishSnapshot(previousSnapshot));
 }
 
 function enableAp(sid, context) {
