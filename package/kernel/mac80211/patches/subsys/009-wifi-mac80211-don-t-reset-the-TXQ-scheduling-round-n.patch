@@ -1,5 +1,5 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Tue, 8 Sep 2026 16:41:55 +0200
+Date: Fri, 30 Oct 2026 22:21:49 +0800
 Subject: [PATCH] wifi: mac80211: don't reset the TXQ scheduling round number
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -41,7 +41,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	spinlock_t handle_wake_tx_queue_lock;
 --- a/net/mac80211/tx.c
 +++ b/net/mac80211/tx.c
-@@ -4122,7 +4122,7 @@
+@@ -4142,7 +4142,7 @@
  
  	spin_lock_bh(&local->active_txq_lock[ac]);
  
@@ -50,7 +50,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		goto out;
  
   begin:
-@@ -4326,12 +4326,12 @@
+@@ -4346,12 +4346,12 @@
  
  	spin_lock_bh(&local->active_txq_lock[ac]);
  

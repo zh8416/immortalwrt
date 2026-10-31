@@ -2,10 +2,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=qca-ppe-qos
 PKG_VERSION:=20261030
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 PKG_LICENSE:=GPL-2.0-only
-PKG_LICENSE_FILES:=
 PKG_MAINTAINER:=Julius Bairaktaris <julius@bairaktaris.de>
+
+PKG_FLAGS:=nonshared
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -13,9 +14,9 @@ define Package/qca-ppe-qos
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Qualcomm PPE hardware QoS classifiers
-  DEPENDS:=@TARGET_qualcommax +KERNEL_DCB:dcb +tc +kmod-sched-flower +kmod-sched-act-pedit \
+  DEPENDS:=@(TARGET_qualcommax_ipq807x||TARGET_qualcommax_ipq60xx) \
+	+KERNEL_DCB:dcb +tc +kmod-sched-flower +kmod-sched-act-pedit \
 	+kmod-sched-prio +kmod-sched-ets +kmod-sched-mqprio +kmod-sched-act-police
-  PKGARCH:=all
   CONFLICTS:=ppe-qos
   EXTRA_DEPENDS:=$(if $(CONFIG_USE_APK),!ppe-qos (>=0))
 endef

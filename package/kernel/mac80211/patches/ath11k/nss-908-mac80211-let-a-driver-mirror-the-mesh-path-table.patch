@@ -1,5 +1,5 @@
-From: Julius Bairaktaris <julius@bairaktaris.de>
-Date: Wed, 28 Oct 2026 22:34:51 +0800
+From: ViKing <viking.yfy@qq.com>
+Date: Fri, 30 Oct 2026 22:24:19 +0800
 Subject: [PATCH v2] mac80211: let a driver mirror the mesh path table
 
 A device that forwards 802.11s frames itself needs the mesh path and
@@ -120,7 +120,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  };
  
  #define IEEE80211_NAN_MAX_CHANNELS 3
-@@ -4675,6 +4751,8 @@
+@@ -4683,6 +4759,8 @@
   *	to use rx decapsulation offload
   * @sta_set_airtime_weight: Called to notify the driver of a change to a
   *	station's airtime fairness weight, so it can be programmed in hardware.
@@ -129,7 +129,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
   * @add_twt_setup: Update hw with TWT agreement parameters received from the peer.
   *	This callback allows the hw to check if requested parameters
   *	are supported and if there is enough room for a new agreement.
-@@ -5092,6 +5170,10 @@
+@@ -5187,6 +5265,10 @@
  	void (*sta_set_airtime_weight)(struct ieee80211_hw *hw,
  				       struct ieee80211_vif *vif,
  				       struct ieee80211_sta *sta, u16 weight);
@@ -140,7 +140,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	void (*add_twt_setup)(struct ieee80211_hw *hw,
  			      struct ieee80211_sta *sta,
  			      struct ieee80211_twt_setup *twt);
-@@ -8230,4 +8312,29 @@
+@@ -8440,4 +8522,29 @@
   * Return: 0 if success and non-zero on error
   */
  int ieee80211_encrypt_tx_skb(struct sk_buff *skb);
@@ -172,7 +172,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  #endif /* MAC80211_H */
 --- a/net/mac80211/cfg.c
 +++ b/net/mac80211/cfg.c
-@@ -3297,6 +3297,7 @@
+@@ -3322,6 +3322,7 @@
  	if (_chg_mesh_attr(NL80211_MESHCONF_CONNECTED_TO_AS, mask))
  		conf->dot11MeshConnectedToAuthServer =
  			nconf->dot11MeshConnectedToAuthServer;
@@ -182,7 +182,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  }
 --- a/net/mac80211/driver-ops.h
 +++ b/net/mac80211/driver-ops.h
-@@ -1833,4 +1833,18 @@
+@@ -1968,4 +1968,18 @@
  	return ret;
  }
  
@@ -203,7 +203,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  #endif /* __MAC80211_DRIVER_OPS */
 --- a/net/mac80211/mesh.c
 +++ b/net/mac80211/mesh.c
-@@ -1155,6 +1155,16 @@
+@@ -1156,6 +1156,16 @@
  	wiphy_work_queue(sdata->local->hw.wiphy, &sdata->work);
  }
  
@@ -220,10 +220,10 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
  {
  	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
-@@ -1190,6 +1200,7 @@
+@@ -1191,6 +1201,7 @@
  	}
  
- 	ieee80211_recalc_dtim(sdata, drv_get_tsf(local, sdata));
+ 	ieee80211_recalc_dtim(&sdata->deflink, drv_get_tsf(local, sdata));
 +	ieee80211_mesh_offld_config(sdata);
  	ieee80211_link_info_change_notify(sdata, &sdata->deflink, changed);
  

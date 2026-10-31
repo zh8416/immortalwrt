@@ -53,6 +53,8 @@ function overlaps(a, b) {
 
 export function synchronize(uci, data, upstream4, target) {
 	let changed = {};
+	if (uci.get_all('router-tool', 'main')?.['.type'] != 'settings')
+		die('Invalid router-tool.main settings section');
 	let recorder = null;
 	let previous_state = null;
 	function ensure(config, type_name, sid) {
@@ -84,8 +86,9 @@ export function synchronize(uci, data, upstream4, target) {
 		if (sid == null) return;
 		for (let key, value in values) {
 			if (recorder) {
+				let custom = recorder.mode != 'ap' && custom_option(uci, previous_state, config, sid, key);
 				let option = record_option(uci, recorder, config, sid, key);
-				if (recorder.mode != 'ap' && custom_option(uci, previous_state, config, sid, key)) {
+				if (custom) {
 					if (option) option.custom = true;
 					continue;
 				}
@@ -103,10 +106,10 @@ export function synchronize(uci, data, upstream4, target) {
 		}
 	}
 	let sid = sections(uci, 'network', 'globals')[0]?.['.name'] || ensure('network', 'globals', 'globals');
-	let ap = uci.get('network', sid, 'router_tool_ap') == '1';
+	let ap = uci.get('router-tool', 'main', 'ap_mode') == '1';
 	let role = uci.get('network', 'wan', 'proto') == 'pppoe' ? 'main' : 'sub';
-	let previous = uci.get('network', sid, 'router_tool_auto');
-	let saved = uci.get('network', sid, 'router_tool_state');
+	let previous = uci.get('router-tool', 'main', 'auto_role');
+	let saved = uci.get('router-tool', 'main', 'state');
 	let state = previous || saved ? read_snapshot(saved, previous) : null;
 	let context = saved_lan(state);
 	if (context && !equal(context, lan_context(uci))) state.manual_lan = true;
@@ -114,23 +117,25 @@ export function synchronize(uci, data, upstream4, target) {
 	// Apply platform defaults once; preserve explicit user choices on reload
 	// and role changes, including disabled RPS/RFS and all-CPU steering.
 	let defaults = data.platform_defaults?.[target] || data.platform_defaults?.[split(target || '', '/')[0]];
-	if (defaults?.network && uci.get('network', sid, 'router_tool_steering_defaults_done') != '1') {
+	if (defaults?.network && uci.get('router-tool', 'main', 'steering_defaults_done') != '1') {
 		for (let option, value in defaults.network)
 			if (uci.get('network', sid, option) == null)
 				set('network', sid, { [option]: value });
-		set('network', sid, { router_tool_steering_defaults_done: '1' });
+		set('router-tool', 'main', { steering_defaults_done: '1' });
 	}
-	if (defaults?.firewall && uci.get('network', sid, 'router_tool_offload_defaults_done') != '1') {
+	if (defaults?.firewall && uci.get('router-tool', 'main', 'offload_defaults_done') != '1') {
 		let firewall = sections(uci, 'firewall', 'defaults')[0]?.['.name'] || ensure('firewall', 'defaults', 'defaults');
 		// Initialize the preset even when firewall4 ships its own defaults.
 		// The marker preserves later user choices, including LuCI "None",
 		// which removes both options.
 		set('firewall', firewall, defaults.firewall);
-		set('network', sid, { router_tool_offload_defaults_done: '1' });
+		set('router-tool', 'main', { offload_defaults_done: '1' });
 	}
 	// Keep later user-added ULA prefixes after the one-time cleanup.
-	if (uci.get('network', sid, 'router_tool_ula_cleanup_done') != '1')
-		set('network', sid, { ula_prefix: null, router_tool_ula_cleanup_done: '1' });
+	if (uci.get('router-tool', 'main', 'ula_cleanup_done') != '1') {
+		set('network', sid, { ula_prefix: null });
+		set('router-tool', 'main', { ula_cleanup_done: '1' });
+	}
 	if (ap) return keys(changed);
 	if (previous != role) {
 		let context = saved_lan(previous_state);
@@ -175,7 +180,7 @@ export function synchronize(uci, data, upstream4, target) {
 			set('firewall', rule, enabled ? { name, enabled: '1', src: 'wan', target: 'ACCEPT', src_ip: null, dest_ip: null, ...values } : { enabled: '0' });
 		}
 		recorder = null;
-		set('network', sid, { router_tool_auto: role });
+		set('router-tool', 'main', { auto_role: role });
 	}
 	// Await the first lease, then check the LAN subnet once for this mode.
 	// Later lease events must not overwrite a user's addressing decisions.
@@ -203,9 +208,9 @@ export function synchronize(uci, data, upstream4, target) {
 		}
 		recorder = null;
 		state.subnet_done = true;
-		set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
+		set('router-tool', 'main', { state: finish_snapshot(uci, state) });
 	}
-	else if (previous != role) set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
+	else if (previous != role) set('router-tool', 'main', { state: finish_snapshot(uci, state) });
 	else {
 		let protocol = tracked_option(state, 'network', 'wan', 'proto');
 		let last_proto = state.proto ?? protocol?.expected;
@@ -216,7 +221,7 @@ export function synchronize(uci, data, upstream4, target) {
 			set('network', 'wan6', { device: wan6_device(uci) });
 			recorder = null;
 			if (protocol) protocol.expected = uci.get('network', 'wan', 'proto');
-			set('network', sid, { router_tool_state: finish_snapshot(uci, state) });
+			set('router-tool', 'main', { state: finish_snapshot(uci, state) });
 		}
 	}
 	return keys(changed);

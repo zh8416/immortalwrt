@@ -1,11 +1,11 @@
-From: John Crispin <john@phrozen.org>
-Date: Wed, 28 Oct 2026 13:34:14 +0800
+From: ViKing <viking.yfy@qq.com>
+Date: Sat, 31 Oct 2026 10:43:58 +0800
 Subject: [PATCH] clk: qcom: preserve essential IPQ6018 fabric clocks
 
-The XO clock source is always-on in hardware and cannot be gated. Without
-CLK_IS_CRITICAL, runtime PM of downstream consumers (such as the CMN PLL
-driver) cascades a disable up to gcc_xo_clk_src, causing a branch status
-timeout warning.
+The XO and sleep clock sources are always-on in hardware and cannot be
+gated. Without CLK_IS_CRITICAL, runtime PM of downstream consumers (such as
+the CMN PLL driver or the USB DWC3 controller) cascades a disable up to the
+source branch, causing a branch status timeout warning.
 
 nss_crypto_clk_src can only reach its 300 MHz operating point through
 P_NSS_CRYPTO_PLL:
@@ -38,6 +38,14 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  			.num_parents = 1,
 -			.flags = CLK_SET_RATE_PARENT,
 +			.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
+ 			.ops = &clk_branch2_ops,
+ 		},
+ 	},
+@@ -446,6 +447,7 @@
+ 				.fw_name = "sleep_clk",
+ 			},
+ 			.num_parents = 1,
++			.flags = CLK_IS_CRITICAL,
  			.ops = &clk_branch2_ops,
  		},
  	},

@@ -1,5 +1,5 @@
-From: Felix Fietkau <nbd@nbd.name>
-Date: Wed, 28 Oct 2026 13:34:14 +0800
+From: ViKing <viking.yfy@qq.com>
+Date: Fri, 30 Oct 2026 22:23:00 +0800
 Subject: [PATCH] wifi: cfg80211: coordinate AP DFS grace periods and concurrent operation
 
 In non-ETSI regulatory domains, DFS channel availability from completed CAC
@@ -220,7 +220,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	beacon_check.iftype = wdev->iftype;
  	beacon_check.relax = true;
  	beacon_check.reg_power =
-@@ -22526,6 +22528,9 @@
+@@ -22533,6 +22535,9 @@
  		break;
  	case NL80211_IFTYPE_AP:
  	case NL80211_IFTYPE_P2P_GO:

@@ -1,5 +1,5 @@
 From: ViKing <viking.yfy@qq.com>
-Date: Wed, 28 Oct 2026 13:34:14 +0800
+Date: Fri, 30 Oct 2026 22:23:00 +0800
 Subject: [PATCH] wifi: mac80211: account broadcast AQL and expose pending TXQ airtime
 
 Excessive broadcast traffic with little competing unicast traffic can
@@ -23,7 +23,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/include/net/cfg80211.h
 +++ b/include/net/cfg80211.h
-@@ -3725,6 +3725,7 @@
+@@ -3728,6 +3728,7 @@
  /* The per TXQ device queue limit in airtime */
  #define IEEE80211_DEFAULT_AQL_TXQ_LIMIT_L	5000
  #define IEEE80211_DEFAULT_AQL_TXQ_LIMIT_H	12000
@@ -204,7 +204,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
 --- a/net/mac80211/tx.c
 +++ b/net/mac80211/tx.c
-@@ -2589,7 +2589,7 @@
+@@ -2623,7 +2623,7 @@
  
  		spin_lock_irqsave(&local->ack_status_lock, flags);
  		id = idr_alloc(&local->ack_status_frames, ack_skb,
@@ -213,7 +213,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		spin_unlock_irqrestore(&local->ack_status_lock, flags);
  
  		if (id >= 0) {
-@@ -4054,20 +4054,20 @@
+@@ -4108,20 +4108,20 @@
  encap_out:
  	info->control.vif = vif;
  
@@ -244,7 +244,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	}
  
  	return skb;
-@@ -4119,6 +4119,7 @@
+@@ -4173,6 +4173,7 @@
  	struct ieee80211_txq *ret = NULL;
  	struct txq_info *txqi = NULL, *head = NULL;
  	bool found_eligible_txq = false;
@@ -252,7 +252,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	spin_lock_bh(&local->active_txq_lock[ac]);
  
-@@ -4142,26 +4143,26 @@
+@@ -4196,26 +4197,26 @@
  	if (!head)
  		head = txqi;
  
@@ -291,7 +291,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	if (txqi->schedule_round == local->schedule_round[ac])
  		goto out;
  
-@@ -4228,7 +4229,8 @@
+@@ -4282,7 +4283,8 @@
  		return true;
  
  	if (!txq->sta)
@@ -301,7 +301,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	if (unlikely(txq->tid == IEEE80211_NUM_TIDS))
  		return true;
-@@ -4248,6 +4250,24 @@
+@@ -4302,6 +4304,24 @@
  }
  EXPORT_SYMBOL(ieee80211_txq_airtime_check);
  
@@ -326,7 +326,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  static bool
  ieee80211_txq_schedule_airtime_check(struct ieee80211_local *local, u8 ac)
  {
-@@ -4277,15 +4297,15 @@
+@@ -4331,15 +4351,15 @@
  
  	spin_lock_bh(&local->active_txq_lock[ac]);
  

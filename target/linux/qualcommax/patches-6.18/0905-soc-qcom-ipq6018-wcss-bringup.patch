@@ -1,5 +1,5 @@
-From: Robert Marko <robimarko@gmail.com>
-Date: Wed, 28 Oct 2026 13:34:14 +0800
+From: ViKing <viking.yfy@qq.com>
+Date: Sat, 31 Oct 2026 01:04:04 +0800
 Subject: [PATCH] soc: qcom: connect IPQ6018 secure WCSS and SMP2P acknowledgments
 
 The IPQ6018 WCSS firmware is loaded through the secure PIL remoteproc
@@ -33,7 +33,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
 
 --- a/arch/arm64/boot/dts/qcom/ipq6018.dtsi
 +++ b/arch/arm64/boot/dts/qcom/ipq6018.dtsi
-@@ -852,17 +852,115 @@
+@@ -870,17 +870,115 @@
  			};
  		};
  
@@ -154,7 +154,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  			interrupt-names = "wdog",
  					  "fatal",
  					  "ready",
-@@ -877,10 +975,8 @@
+@@ -895,10 +993,8 @@
  				      "wcss_reset",
  				      "wcss_q6_reset";
  
@@ -167,7 +167,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  			qcom,smem-states = <&wcss_smp2p_out 0>,
  					   <&wcss_smp2p_out 1>;
-@@ -1124,6 +1220,7 @@
+@@ -1142,6 +1238,7 @@
  
  		wcss_smp2p_out: master-kernel {
  			qcom,entry-name = "master-kernel";
