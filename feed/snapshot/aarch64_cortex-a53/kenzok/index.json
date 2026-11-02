@@ -2,6 +2,8 @@
   "version": 2,
   "architecture": "aarch64_cortex-a53",
   "packages": {
-    "luci-i18n-clashoo-zh-cn": "1.31.0-r9"
+    "luci-app-partexp": "2.0.5-r20260318",
+    "luci-i18n-clashoo-zh-cn": "1.31.0-r9",
+    "luci-i18n-partexp-zh-cn": "26.305.62376~733f372"
   }
 }

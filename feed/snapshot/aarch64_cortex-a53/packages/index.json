@@ -5,6 +5,7 @@
     "3proxy": "0.9.5-r5",
     "adguardhome": "0.107.79-r1",
     "bash": "5.3-r5",
+    "bc": "1.08.2-r2",
     "btrfs-progs": "6.11-r4",
     "cgi-io": "2026.07.21~31cb3c89-r1",
     "containerd": "2.2.5-r1",
