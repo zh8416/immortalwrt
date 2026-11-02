@@ -6,6 +6,10 @@ Keep the service enabled even when selecting the host path with `offload=0`.
 An interrupted bring-up leaves `/etc/nss-wifi.pending`; the following boot
 uses host rings. Remove that file before rebooting to retry NSS.
 
+The early-probe guard checks each PHY's bound driver and blocks only
+ath11k/ath11k_pci. A separately autoloaded ath10k AIoT PHY, such as the
+AX3600's QCA9887, does not prevent the regular ath11k radios from loading.
+
 The core-0 platform device exposes these sysfs attributes independently of
 debugfs (normally `/sys/bus/platform/devices/39000000.nss`):
 
@@ -19,7 +23,39 @@ debugfs (normally `/sys/bus/platform/devices/39000000.nss`):
 `ready=1` requires a running core and every expected on-chip/eligible PCI
 instance on the selected buses. Disabled device-tree WLAN nodes and absent
 bus modules are excluded. VDEVs are created later by netifd and are not a
-boot prerequisite.
+boot prerequisite. `ready=1` does not establish AP availability or client
+forwarding. `vdev_errors` counts registered instances whose latest VDEV
+creation failed; each instance reports the corresponding `vdev_error`.
+A later successful creation or a new ring registration clears that error.
+
+After a WLAN reset, the final radio ring registration waits for the NSS
+restart worker outside the WiFiLi mutex and before mac80211 restores VDEVs
+under RTNL. VDEV creation never waits for that worker. A WLAN-only restart
+does not reset shared EDMA while another instance keeps using it.
+Port arming runs in separate work, so its RTNL acquisition cannot delay
+completion of WLAN recovery.
+
+A core fault stops the processor before its buffers can be released. Pending
+buffer interrupts cannot mark a halted core as newly booted. All WLAN
+instances must release the old rings before the core is loaded again;
+mac80211 PHY restarts follow that handover so they do not hold RTNL while
+another instance still needs to stop. A PCIe WLAN instance still in mission
+mode skips waiting for an RDDM dump; actual RDDM faults retain dump collection.
+
+IPQ6018 also asserts its separate GCC processor reset on halt and releases it
+only after the boot address and fetch window have been programmed. The shared
+clamp resets alone do not reliably restart this processor. IPQ8074 retains
+its existing reset bits.
+
+Core boot allows five seconds for the firmware response. If an attempt times
+out, the driver waits for the shared EDMA reset and retries once before
+returning the failure to WiFiLi.
+
+For the selected IPQ6018/IPQ8074 AHB remoteproc, the service changes an
+`inline` crash dump to `enabled` before probing WLAN. The kernel retains
+the dump in `/sys/class/devcoredump/` without waiting up to five minutes
+for userspace to release it before restarting the firmware. This uses a
+copy of the dump while it is retained; non-WLAN targets are unaffected.
 The persistent guard is cleared only after 120 seconds and a fresh healthy
 state check. Repeated service actions preserve a healthy running instance.
 

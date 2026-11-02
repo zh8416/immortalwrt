@@ -6,17 +6,18 @@ Build systems may set the optional wireless defaults in `/etc/config/router-tool
 config settings 'main'
 
 config wireless 'defaults'
-	option ssid_prefix 'Home'
-	option key 'example-password'
+	option ssid ''
+	option key ''
 ```
 
-`ssid_prefix` replaces the hostname part of the generated SSID. For example,
-`Home` produces `Home-Redmi-2.4G` and `Home-Redmi-5.2G`. Hostname and prefix case
-are preserved, and the vendor's first letter is capitalized. The suffix follows
-the radio's capabilities (`2.4G`, `5.2G`, `5.8G`, or `6G`). Names are shortened
-to 32 bytes without splitting UTF-8 characters. Omit the prefix to use the system
-hostname. The password defaults to `12345678` if omitted; an explicit value must
-contain 8 to 63 printable ASCII characters, supporting both WPA2 and WPA3-SAE.
+When both values are non-empty, `ssid` produces names such as
+`Home-2.4G` and `Home-5.2G`, with the same key on every band. If either value is
+empty, Router Tool uses the system hostname, vendor, and band in the SSID and
+`12345678` as the key. Hostname case is preserved and the vendor's first letter
+is capitalized. The suffix follows the radio's capabilities (`2.4G`, `5.2G`,
+`5.8G`, or `6G`). Names are shortened to 32 bytes without splitting UTF-8
+characters. A custom key must contain 8 to 63 printable ASCII characters,
+supporting both WPA2 and WPA3-SAE.
 
 These settings are initialization defaults. Only unmarked, untouched APs with
 `OWRT` / `12345678` / `psk2+ccmp` are initialized. Existing custom credentials,

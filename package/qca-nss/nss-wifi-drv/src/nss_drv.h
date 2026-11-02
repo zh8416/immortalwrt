@@ -17,6 +17,7 @@
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
 #include <linux/seq_file.h>
+#include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/workqueue.h>
 
@@ -393,6 +394,9 @@ struct nss_core {
 	unsigned long core_rate;
 	u32 id;
 	bool loaded;
+	/* Only the first SOS from a released image can finish its boot. */
+	spinlock_t state_lock;
+	bool booting;
 	bool running;
 	bool wifili_probed;
 	bool wifili_started;
@@ -406,8 +410,6 @@ struct nss_core {
 	u32 faults;
 	unsigned long fault_window;
 	struct work_struct restart;
-	/* Completed once no restart is pending; WLAN interfaces wait on it. */
-	struct completion resumed;
 	struct clk **aux_clks;
 	int num_aux_clks;
 	unsigned long phys_armed;
