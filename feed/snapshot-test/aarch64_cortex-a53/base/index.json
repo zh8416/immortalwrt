@@ -113,6 +113,7 @@
     "wifi-scripts": "1.0-r7",
     "wireless-regdb": "2026.09.03-r1",
     "wpad-openssl": "2026.08.07~831364bf-r6",
-    "zlib": "2.3.3-r2"
+    "zlib": "2.3.3-r2",
+    "zram-swap": "32"
   }
 }
