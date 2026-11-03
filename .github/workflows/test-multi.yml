@@ -1,4 +1,4 @@
-name: Build ImmortalWrt BE7000 test
+name: Build ImmortalWrt BE7000 test multi
 
 on:
   workflow_dispatch: # 仅允许手动点击按钮触发编译
