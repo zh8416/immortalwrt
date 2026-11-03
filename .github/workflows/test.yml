@@ -1,26 +1,26 @@
-name: Test v7 multiple files
-
-on:
-  workflow_dispatch: # 仅手动触发
-
-jobs:
-  test-v7-multiple:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Create two dummy firmware files
-        run: |
-          mkdir -p test-output
-          # 模拟生成两个不同的固件文件
-          echo "This is factory firmware." > test-output/factory.bin
-          echo "This is sysupgrade firmware." > test-output/sysupgrade.bin
-
-      - name: Try to upload multiple files without zipping (v7)
+      # 1. 上传 factory.bin (假设这是你需要的固件)
+      - name: Upload factory bin
         uses: actions/upload-artifact@v7
         with:
-          # 注意：当 archive: false 时，name 参数会被忽略，这里写不写无所谓
-          name: test-multiple-files 
-          # 这里使用了通配符 *，会匹配到上面生成的两个 .bin 文件
-          path: test-output/*.bin
+          # 注意：这里千万不能写 *.bin，必须精确到某一个具体的文件
+          # 因为你的文件名可能带版本号和日期（例如 immortalwrt-xxx-factory.bin），
+          # 你可以写死，如果每次名字不一样，你可能需要先用 shell 脚本重命名它
+          path: bin/targets/qualcommbe/ipq95xx/immortalwrt-*-factory.bin
           archive: false
-          if-no-files-found: error
+          if-no-files-found: ignore
+
+      # 2. 上传 sysupgrade.bin
+      - name: Upload sysupgrade bin
+        uses: actions/upload-artifact@v7
+        with:
+          path: bin/targets/qualcommbe/ipq95xx/immortalwrt-*-sysupgrade.bin
+          archive: false
+          if-no-files-found: ignore
+
+      # 3. 上传 config 文件
+      - name: Upload build info
+        uses: actions/upload-artifact@v7
+        with:
+          path: bin/targets/qualcommbe/ipq95xx/*config.buildinfo
+          archive: false
+          if-no-files-found: ignore
