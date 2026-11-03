@@ -1,23 +1,26 @@
-name: Test upload-artifact v7 direct upload
+name: Test v7 multiple files
 
 on:
   workflow_dispatch: # 仅手动触发
 
 jobs:
-  test-v7-archive-false:
+  test-v7-multiple:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create a dummy firmware file
+      - name: Create two dummy firmware files
         run: |
           mkdir -p test-output
-          # 模拟一个固件文件（内容不重要）
-          echo "This is a fake firmware binary for testing." > test-output/test-firmware.bin
+          # 模拟生成两个不同的固件文件
+          echo "This is factory firmware." > test-output/factory.bin
+          echo "This is sysupgrade firmware." > test-output/sysupgrade.bin
 
-      - name: Upload single file without zipping (v7)
+      - name: Try to upload multiple files without zipping (v7)
         uses: actions/upload-artifact@v7
         with:
-          name: test-direct-upload
-          path: test-output/test-firmware.bin
+          # 注意：当 archive: false 时，name 参数会被忽略，这里写不写无所谓
+          name: test-multiple-files 
+          # 这里使用了通配符 *，会匹配到上面生成的两个 .bin 文件
+          path: test-output/*.bin
           archive: false
           if-no-files-found: error
