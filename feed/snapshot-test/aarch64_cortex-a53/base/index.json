@@ -14,7 +14,7 @@
     "e2fsprogs": "1.47.4-r1",
     "f2fs-tools": "1.16.0-r4",
     "f2fsck": "1.16.0-r4",
-    "firewall4": "2026.10.29~e6f600c4-r12",
+    "firewall4": "2026.10.29~e6f600c4-r13",
     "fullconenat-sonic": "20261016-r1",
     "getrandom": "2025.10.30~6f78fa49-r1",
     "hostapd-common": "2026.08.07~831364bf-r6",
