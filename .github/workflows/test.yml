@@ -1,0 +1,23 @@
+name: Test upload-artifact v7 direct upload
+
+on:
+  workflow_dispatch: # 仅手动触发
+
+jobs:
+  test-v7-archive-false:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create a dummy firmware file
+        run: |
+          mkdir -p test-output
+          # 模拟一个固件文件（内容不重要）
+          echo "This is a fake firmware binary for testing." > test-output/test-firmware.bin
+
+      - name: Upload single file without zipping (v7)
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-direct-upload
+          path: test-output/test-firmware.bin
+          archive: false
+          if-no-files-found: error
