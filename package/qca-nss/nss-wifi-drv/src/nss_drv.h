@@ -523,6 +523,8 @@ void nss_wifili_bind(struct nss_core *core);
 bool nss_wifili_owns(const struct net_device *dev);
 bool nss_wifili_is_soc(u32 if_num);
 void nss_wifili_me_snoop(u32 if_num, struct sk_buff *skb);
+bool nss_wifili_special_recv(struct nss_core *core, struct napi_struct *napi,
+			     const struct n2h_descriptor *desc, struct sk_buff *skb);
 bool nss_wifili_rx_80211(u32 if_num, struct net_device *dev,
 			 struct sk_buff *skb, struct napi_struct *napi);
 void nss_wifili_me_print(struct seq_file *s);
@@ -581,6 +583,7 @@ void nss_bridge_start(struct nss_core *core);
 void nss_bridge_stop(void);
 void nss_bridge_print(struct seq_file *s);
 void nss_flow_flush(void);
+int nss_flow_configure(struct nss_core *core);
 void nss_flow_withdraw_dev(const struct net_device *dev);
 int nss_flow_dyn_alloc(struct nss_core *core, u32 type);
 void nss_flow_dyn_free(struct nss_core *core, u32 type, int if_num);

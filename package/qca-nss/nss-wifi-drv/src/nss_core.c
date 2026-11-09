@@ -535,17 +535,12 @@ static void nss_core_halt(struct nss_core *core)
  * unconfigured pool is unbounded the other way: the firmware accepted 82242
  * buffers, 329 MB of slab on a 411 MB box, within ten seconds of the core
  * booting. The Wi-Fi data plane's own share of it is declared separately,
- * through nss_wifi_pool_set(). The ceiling is that share plus the 8192 the
- * connections and the exception path take; the firmware fills whatever
- * ceiling it is given, and each buffer costs a 4 KB slab object.
+ * through nss_wifi_pool_set(). The ceiling is that share plus the 16384 the
+ * expanded connections and the exception path take; the firmware fills
+ * whatever ceiling it is given, and each buffer costs a 4 KB slab object.
  */
 static unsigned int nss_pool_size;
-module_param_named(pool_size, nss_pool_size, uint, 0644);
-MODULE_PARM_DESC(pool_size, "empty buffers lent to firmware; 0 selects 16384 with WLAN, 8192 without");
-
 static unsigned int nss_pool_low;
-module_param_named(pool_low, nss_pool_low, uint, 0644);
-MODULE_PARM_DESC(pool_low, "refill threshold; 0 selects 4352 with WLAN, 4096 without");
 /* The firmware refuses a span narrower than the ring the pool is topped up
  * through, so the asked-for ceiling is not always the one that takes effect.
  * The table of lent buffers is sized from the same answer, and is allocated
@@ -556,7 +551,7 @@ unsigned int nss_pool_ceiling(void)
 	bool wlan = nss_wifili_expected();
 
 	if (!nss_pool_size)
-		nss_pool_size = wlan ? 16384 : 8192;
+		nss_pool_size = wlan ? 24576 : 16384;
 	if (!nss_pool_low)
 		nss_pool_low = wlan ? 4352 : 4096;
 	if (nss_pool_low < NSS_RING_ENTRIES)
@@ -935,17 +930,25 @@ static int nss_core_boot(struct nss_core *core)
 		goto halt;
 	}
 
+	nss_pool_configure(core);
+	nss_accel_in_core(core);
+	nss_rps_enable(core);
+	nss_pbuf_pool_add(core, nss_pbuf_bytes);
+	nss_core_stats_off(core);
+	/* The firmware needs its packet pools before table negotiation. Keep
+	 * flow steering disabled until both families acknowledge the handover.
+	 * A failed or ambiguous handover halts before its DMA blocks are freed.
+	 */
+	ret = nss_flow_configure(core);
+	if (ret)
+		goto halt;
+
 	ret = qca_ppe_fw_carrier_set(core->conduit, nss_flow_is_ours);
 	if (ret) {
 		dev_err(core->dev, "flows not steered to the firmware: %d\n", ret);
 		goto halt;
 	}
 
-	nss_pool_configure(core);
-	nss_accel_in_core(core);
-	nss_rps_enable(core);
-	nss_pbuf_pool_add(core, nss_pbuf_bytes);
-	nss_core_stats_off(core);
 	nss_bridge_start(core);
 
 	return 0;
@@ -1118,6 +1121,14 @@ static int nss_boot_set(void *data, u64 val)
 	struct nss_core *core = data;
 	int ret = 0;
 
+	/* WLAN recovery automatically restores its rings and interfaces. A
+	 * user-requested permanent halt leaves that recovery with no NSS,
+	 * so it must instead tear down WLAN modules or reboot. Fault recovery
+	 * and driver removal use their own coordinated lifetime paths.
+	 */
+	if (!val && nss_wifili_expected())
+		return -EBUSY;
+
 	WRITE_ONCE(core->up, val);
 
 	if (!val) {
@@ -1220,9 +1231,9 @@ static int nss_rx_show(struct seq_file *s, void *unused)
 		   core->link_desc_returned, core->tx_posted,
 		   atomic64_read(&core->tx_done));
 
-	/* How many buffers the firmware is holding. It takes one per
-	 * accelerated connection, so a create rule refused for want of a
-	 * buffer is read here rather than inferred.
+	/* Total host buffers lent to the firmware, including WLAN and
+	 * protocol/exception work. This is not a free-buffer count; the N2H
+	 * snapshots in flows distinguish allocation failures from occupancy.
 	 */
 	seq_printf(s, "buffers in firmware custody: %d  desync: %llu\n",
 		   atomic_read(&core->buffers_queued),
