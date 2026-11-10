@@ -14,6 +14,7 @@
     "dosfstools": "4.2-r4",
     "exfat-fsck": "1.4.3-r1",
     "exfat-mkfs": "1.4.3-r1",
+    "fancontrol": "2.1.0-r1",
     "libattr": "2.6.0-r1",
     "libcurl": "8.23.0-r1",
     "liblzo": "2.10-r5",
