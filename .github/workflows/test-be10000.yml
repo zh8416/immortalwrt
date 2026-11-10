@@ -1,4 +1,4 @@
-name: Build ImmortalWrt BE7000 test
+name: Build ImmortalWrt BE10000 test
 
 on:
   workflow_dispatch: # 仅允许手动点击按钮触发编译
@@ -6,7 +6,7 @@ on:
       config_file:
         description: '请输入根目录下的配置文件名称 (例如 .config 或 my.config)'
         required: true
-        default: 'test.config'
+        default: '10000.config'
         type: string
 
 jobs:
