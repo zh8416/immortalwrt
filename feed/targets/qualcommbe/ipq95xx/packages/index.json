@@ -4,7 +4,7 @@
   "packages": {
     "autocore": "44",
     "automount": "10",
-    "base-files": "1~dd5174a",
+    "base-files": "1~0d52935",
     "block-mount": "2026.10.18~907cf449-r2",
     "dropbear": "2026.94-r3",
     "fstools": "2026.10.18~907cf449-r2",
@@ -179,6 +179,7 @@
     "libgcc": "14.4.0-r5",
     "libpthread": "1.2.6-r5",
     "librt": "1.2.6-r5",
+    "libstdcpp": "14.4.0-r5",
     "mtd": "29",
     "procd-ujail": "2026.11.03~fb611687-r1",
     "ubi-utils": "2.3.1-r1",
