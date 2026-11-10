@@ -35,6 +35,11 @@ does not reset shared EDMA while another instance keeps using it.
 Port arming runs in separate work, so its RTNL acquisition cannot delay
 completion of WLAN recovery.
 
+After a WLAN reset, the recovery hook deauthenticates clients on every BSS
+of the recovered PHY so that they establish fresh keys. It leaves the
+current authenticator configuration intact: reloading hostapd's original
+inline configuration can undo dynamic SSID or security changes.
+
 A core fault stops the processor before its buffers can be released. Pending
 buffer interrupts cannot mark a halted core as newly booted. All WLAN
 instances must release the old rings before the core is loaded again;
@@ -77,6 +82,10 @@ IPv4 and IPv6, or 8192 combined. Unused capacity in one family is not
 available to the other. The driver negotiates host-backed tables with the
 firmware before enabling flow steering. Capacity is fixed and requires no
 configuration.
+
+The firmware packet-descriptor pool defaults to 32 MiB (`pbuf_bytes`).
+It is allocated separately from the payload slabs and connection tables;
+it does not change the WLAN payload share or the fixed connection limits.
 
 The connection tables and packet payload pool are separate resources.
 The automatic pool ceiling is 24576 with WLAN and 16384 without it. Relative
