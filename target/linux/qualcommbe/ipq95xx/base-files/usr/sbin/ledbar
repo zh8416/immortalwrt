@@ -1,0 +1,47 @@
+#!/bin/sh
+# Xiaomi BE10000 top RGB light bar control (mainline pwm-leds)
+R=/sys/class/leds/ambient_rgb:red/brightness
+G=/sys/class/leds/ambient_rgb:green/brightness
+B=/sys/class/leds/ambient_rgb:blue/brightness
+
+die()  { echo "ledbar: $*" >&2; exit 1; }
+check(){ [ -w "$R" ] && [ -w "$G" ] && [ -w "$B" ] || die "LED nodes missing (patched DTB not loaded?)"; }
+rgb()  { check; printf '%s\n' "$1" > "$R"; printf '%s\n' "$2" > "$G"; printf '%s\n' "$3" > "$B"; }
+scale(){ echo $(( $1 * $2 / 255 )); }
+nap()  { sleep "$1" 2>/dev/null || sleep 1; }
+
+breath() {
+	r=$1; g=$2; b=$3; d=${4:-0.04}
+	while :; do
+		for v in $(seq 0 5 255); do
+			rgb "$(scale "$r" "$v")" "$(scale "$g" "$v")" "$(scale "$b" "$v")"; nap "$d"
+		done
+		for v in $(seq 255 -5 0); do
+			rgb "$(scale "$r" "$v")" "$(scale "$g" "$v")" "$(scale "$b" "$v")"; nap "$d"
+		done
+	done
+}
+
+rainbow() {
+	d=${1:-0.05}
+	while :; do
+		for v in $(seq 0 5 255); do rgb "$v" "$((255-v))" 0; nap "$d"; done
+		for v in $(seq 0 5 255); do rgb "$((255-v))" 0 "$v"; nap "$d"; done
+		for v in $(seq 0 5 255); do rgb 0 "$v" "$((255-v))"; nap "$d"; done
+	done
+}
+
+blink() {
+	r=$1; g=$2; b=$3; d=${4:-0.5}
+	while :; do rgb "$r" "$g" "$b"; nap "$d"; rgb 0 0 0; nap "$d"; done
+}
+
+case "$1" in
+	off|stop)   rgb 0 0 0 ;;
+	on|static)  rgb "${2:-0}" "${3:-0}" "${4:-255}" ;;
+	color|set)  rgb "$2" "$3" "$4" ;;
+	breath)     breath "${2:-0}" "${3:-128}" "${4:-255}" "${5:-0.04}" ;;
+	rainbow)    rainbow "${2:-0.05}" ;;
+	blink)      blink "${2:-255}" "${3:-255}" "${4:-255}" "${5:-0.5}" ;;
+	*) echo "usage: ledbar off | on [R G B] | color R G B | breath [R G B delay] | rainbow [delay] | blink [R G B delay]"; exit 1 ;;
+esac
