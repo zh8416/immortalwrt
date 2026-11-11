@@ -1,7 +1,0 @@
-config ledbar 'main'
-	option enabled '0'
-	option effect 'breath'
-	option red '0'
-	option green '128'
-	option blue '255'
-	option delay '0.04'

@@ -115,29 +115,23 @@
 		compatible = "pwm-leds";
 
 		led_bar_red: bar-red {
-			label = "ambient_rgb:red";
+			label = "red:ambient";
 			pwms = <&pwm 3 51000 0>;
 			max-brightness = <255>;
+			default-state = "keep";
 		};
 		led_bar_green: bar-green {
-			label = "ambient_rgb:green";
+			label = "green:ambient";
 			pwms = <&pwm 2 51000 0>;
 			max-brightness = <255>;
+			default-state = "keep";
 		};
 		led_bar_blue: bar-blue {
-			label = "ambient_rgb:blue";
+			label = "blue:ambient";
 			pwms = <&pwm 1 51000 0>;
 			max-brightness = <255>;
+			default-state = "keep";
 		};
-	};
-
-	/* 备用：若风扇接在 SoC PWM 而非 I²C，改成 status = "okay" 再编译 */
-	pwm_fan: pwm-fan {
-		compatible = "pwm-fan";
-		status = "disabled";
-		pwms = <&pwm 0 40000 0>;
-		#cooling-cells = <2>;
-		cooling-levels = <64 128 192 255>;
 	};
 
 	sfp: sfp {
@@ -169,19 +163,19 @@
 	clock-frequency = <100000>;
 	status = "okay";
 	fan_controller: fan-controller@2f {
-		compatible = "microchip,emc2305";   /* 主线 OF 匹配串，驱动读 0xfd 自动识别 2301/2/3/5 */
+		compatible = "microchip,emc2301", "microchip,emc2305";
 		reg = <0x2f>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		#pwm-cells = <3>;
 		fan@0 {
 			reg = <0>;
-			pwms = <&fan_controller 26000 0 0>;
+			pwms = <&fan_controller 26000 0 1>;
 			#cooling-cells = <2>;
 		};
 	};
 
-	temp_fan: lm63@4c {
+	temp_fan: temperature-sensor@4c {
 		compatible = "national,lm63";
 		reg = <0x4c>;
 	};

@@ -14,9 +14,6 @@ xiaomi,be10000-es)
 	ucidef_set_led_netdev "lan2-port" "LAN2 port" "90000.mdio-1:02:green:lan-2" "lan2" "link_10 link_100 link_1000 link_2500 tx rx"
 	ucidef_set_led_netdev "lan3-port" "LAN3 port" "90000.mdio-1:03:green:lan-3" "lan3" "link_10 link_100 link_1000 link_2500 tx rx"
 	ucidef_set_led_netdev "lan4-port" "LAN4 port" "90000.mdio-1:04:green:lan-4" "lan4" "link_10 link_100 link_1000 link_2500 tx rx"
-	ucidef_set_led_default "bar-red" "Light bar red" "ambient_rgb:red" "0"
-	ucidef_set_led_default "bar-green" "Light bar green" "ambient_rgb:green" "0"
-	ucidef_set_led_default "bar-blue" "Light bar blue" "ambient_rgb:blue" "0"
 	;;
 xiaomi,be7000|\
 xiaomi,be7000-es)
