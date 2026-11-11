@@ -5,8 +5,8 @@
     "linkease-app-entry": "3.0.23-r1",
     "luci-app-partexp": "2.0.5-r20260318",
     "luci-i18n-clashoo-zh-cn": "1.32.0-r1",
-    "luci-i18n-partexp-zh-cn": "26.314.50535~3992bad",
-    "luci-lib-linkeaseauth": "1.2.1-r1",
+    "luci-i18n-partexp-zh-cn": "26.315.20004~6b4dfa1",
+    "luci-lib-linkeaseauth": "1.2.1-r3",
     "luci-lib-taskd": "1.0.26",
     "luci-lib-xterm": "4.18.0",
     "taskd": "1.0.3-r2"

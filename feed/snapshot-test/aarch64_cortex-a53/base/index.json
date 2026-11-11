@@ -4,6 +4,7 @@
   "packages": {
     "apk-openssl": "3.0.5-r4",
     "ath12k-firmware-qcn9274-ddwrt": "2026.11.07~774f0cca-r1",
+    "be10000-fan-rgb": "2026.09.02-r1",
     "blkid": "2.42.2-r1",
     "busybox": "1.38.0-r4",
     "ca-bundle": "20260816-r2",
