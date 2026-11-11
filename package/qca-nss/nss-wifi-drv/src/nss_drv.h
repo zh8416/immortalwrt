@@ -315,6 +315,7 @@ struct nss_msg {
 };
 
 struct nss_core;
+void nss_pool_notify(struct nss_core *core, const struct nss_cmn_msg *cm, u32 len);
 
 struct nss_irq_ctx {
 	struct nss_core *core;
@@ -419,6 +420,18 @@ struct nss_core {
 	 * whatever it holds above its mark.
 	 */
 	u32 pool_size;
+	u32 pool_floor;
+	u32 pool_used;
+	u32 pool_failed;
+	u32 pool_failed_seen;
+	u32 pool_grows;
+	u32 pool_shrinks;
+	u32 pool_errors;
+	unsigned long pool_sample_at;
+	unsigned long pool_idle_at;
+	bool pool_adaptive;
+	bool pool_disabled;
+	struct delayed_work pool_work;
 	void **pbuf_page;
 	dma_addr_t *pbuf_dma;
 	u32 pbuf_pages;
@@ -499,6 +512,8 @@ void nss_doorbell(struct nss_core *core, u32 intr);
 int nss_msg_init(struct nss_core *core);
 int nss_msg_send(struct nss_core *core, void *msg, size_t len);
 int nss_msg_send_quiet(struct nss_core *core, void *msg, size_t len);
+int nss_msg_send_tracked(struct nss_core *core, void *msg, size_t len,
+			 bool *pending);
 int nss_msg_transact(struct nss_core *core, void *msg, size_t len, size_t room);
 bool nss_msg_complete(struct nss_core *core, const struct n2h_descriptor *desc);
 int nss_msg_probe(struct nss_core *core, struct seq_file *s);
