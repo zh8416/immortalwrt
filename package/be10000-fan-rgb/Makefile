@@ -43,7 +43,7 @@ define Package/be10000-fan-rgb/install
 		$(1)/etc/uci-defaults/99-be10000-fan-rgb \
 		$(1)/usr/libexec/be10000-*.uc \
 		$(1)/usr/sbin/be10000-rgb \
-		$(1)/sbin/faninfo $(1)/sbin/tempinfo
+		$(1)/sbin/faninfo
 endef
 
 $(eval $(call BuildPackage,be10000-fan-rgb))
