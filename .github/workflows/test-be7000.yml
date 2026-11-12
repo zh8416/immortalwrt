@@ -6,7 +6,7 @@ on:
       config_file:
         description: '请输入根目录下的配置文件名称 (例如 .config 或 my.config)'
         required: true
-        default: 'test.config'
+        default: '7000.config'
         type: string
 
 jobs:
