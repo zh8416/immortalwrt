@@ -10,7 +10,6 @@
     "cgi-io": "2026.07.21~31cb3c89-r1",
     "coreutils": "9.11-r1",
     "coreutils-stty": "9.11-r1",
-    "coreutils-timeout": "9.11-r1",
     "curl": "8.23.0-r1",
     "dosfstools": "4.2-r4",
     "exfat-fsck": "1.4.3-r1",
