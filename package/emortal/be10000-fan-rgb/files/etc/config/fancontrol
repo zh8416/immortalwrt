@@ -1,3 +1,0 @@
-config fancontrol 'settings'
-	option enabled '1'
-	option profile 'auto'
