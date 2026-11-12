@@ -85,6 +85,7 @@ jobs:
 
       # 收集 7 个独立附件：config.buildinfo + 两机型各 bin / ubi / itb
       - name: Collect release assets
+        id: collect
         run: |
           set -euo pipefail
           mkdir -p release-assets
@@ -122,16 +123,62 @@ jobs:
           echo "已收集 7 个附件："
           ls -lh release-assets
 
-      - name: Upload individual files to Actions artifacts
+      # upload-artifact@v7 限制：archive:false 时一个步骤「只能上传 1 个文件」。
+      # 因此 7 个附件拆成 7 个步骤逐条上传，每个 glob 恰好匹配 1 个文件，
+      # 且 7 个文件名互不相同（archive:false 下 artifact 名 = 文件名）。
+      - name: Upload config.buildinfo
         uses: actions/upload-artifact@v7
         with:
-          # archive:false 下每个文件是独立 artifact，run 页底部逐条可下载
-          path: release-assets/*
+          path: release-assets/config.buildinfo
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE7000 sysupgrade.bin
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be7000-*.bin
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE7000 factory.ubi
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be7000-*.ubi
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE7000 initramfs.itb
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be7000-*.itb
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE10000 sysupgrade.bin
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be10000-*.bin
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE10000 factory.ubi
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be10000-*.ubi
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE10000 initramfs.itb
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be10000-*.itb
           archive: false
           if-no-files-found: error
 
       - name: Create GitHub Release
         id: release
+        # 主交付是 Release；只要 7 个附件收集齐，就不因 artifact 上传意外而跳过
+        if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
