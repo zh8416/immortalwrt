@@ -23,9 +23,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 4G
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+
+      - name: Cache source downloads (dl/)
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: openwrt-dl-${{ github.ref_name }}
+          restore-keys: |
+            openwrt-dl-${{ github.ref_name }}
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: openwrt-ccache-${{ github.ref_name }}
+          restore-keys: |
+            openwrt-ccache-${{ github.ref_name }}
 
       - name: Free disk space
         run: |
@@ -62,6 +82,7 @@ jobs:
       - name: Prepare build config
         run: |
           echo "CONFIG_DEVEL=y" >> .config
+          echo "CONFIG_CCACHE=y" >> .config
           export FORCE=1
           make defconfig
           # 确认多机型与按设备 rootfs 没有被 Kconfig 覆盖回单机型
