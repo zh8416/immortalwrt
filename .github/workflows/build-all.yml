@@ -26,6 +26,7 @@ jobs:
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 4G
+      BUILD_NOTES: .github/build-notes.md
 
     steps:
       - name: Checkout source code
@@ -236,6 +237,13 @@ jobs:
             for f in release-assets/*; do
               echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
             done
+            if [ -s "$BUILD_NOTES" ]; then
+              echo ""
+              echo "---"
+              echo ""
+              cat "$BUILD_NOTES"
+              echo ""
+            fi
           } > release_notes.md
 
           # 每个文件都是独立 asset，不打包成 zip
@@ -268,5 +276,12 @@ jobs:
                 [ -f "$f" ] || continue
                 echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
               done
+            fi
+            if [ -s "$BUILD_NOTES" ]; then
+              echo ""
+              echo "---"
+              echo ""
+              cat "$BUILD_NOTES"
+              echo ""
             fi
           } >> "$GITHUB_STEP_SUMMARY"
