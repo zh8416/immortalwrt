@@ -201,7 +201,7 @@ jobs:
         # 主交付是 Release；只要 7 个附件收集齐，就不因 artifact 上传意外而跳过
         if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
           # 北京时间日期 + 当日编译序号，例如 v2026.11.12.02
