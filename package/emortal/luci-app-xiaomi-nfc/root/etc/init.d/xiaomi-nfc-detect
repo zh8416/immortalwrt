@@ -3,7 +3,6 @@
 # Detect an usable NFC tag before LuCI builds its menu tree.
 # A real CC-header read is required, not just the presence of /dev/i2c-N.
 START=19
-USE_PROCD=0
 
 start() {
 	local n cc bus='' attempt
