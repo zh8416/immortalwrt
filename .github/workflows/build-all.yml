@@ -35,17 +35,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: dl
-          key: openwrt-dl-${{ github.ref_name }}
+          key: openwrt-dl-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            openwrt-dl-${{ github.ref_name }}
+            openwrt-dl-${{ github.ref_name }}-
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: openwrt-ccache-${{ github.ref_name }}
+          key: openwrt-ccache-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            openwrt-ccache-${{ github.ref_name }}
+            openwrt-ccache-${{ github.ref_name }}-
 
       - name: Free disk space
         run: |
