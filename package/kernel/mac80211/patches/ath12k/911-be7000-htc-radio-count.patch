@@ -1,5 +1,5 @@
 From: WorkBuddy <noreply@example.com>
-Date: Sun, 15 Nov 2026 18:45:00 +0800
+Date: Sun, 15 Nov 2026 21:45:00 +0800
 Subject: [PATCH] wifi: ath12k: apply BE7000 runtime radio count in htc
 
 The Xiaomi BE7000 selects its 5 GHz radio mode at probe time through the
@@ -8,29 +8,19 @@ ath12k_be7000_num_radios() for qmi.c and wmi.c. htc.c must use the same
 value, otherwise the static DT property qcom,num-radios (=1) caps the WMI
 endpoint count at one and MAC1 can never connect in tri-band mode.
 
-This hunk is deliberately applied AFTER
-908-ath12k-limit-wmi-endpoints-to-phy-capability.patch: that upstream patch
-uses the original of_property_read_u32() lines as hunk context, so changing
-them earlier (in 305) makes 908 fail with "Hunk #1 FAILED at 779".
-Keeping the DT read intact until now lets 908 apply unchanged, while the
-final code is identical to the original 305 design.
+Applied after 908-ath12k-limit-wmi-endpoints-to-phy-capability.patch, which
+needs the original of_property_read_u32() lines as hunk context. This patch
+keeps the context minimal on purpose: the surrounding htc.c block was
+itself introduced by 301-ath12k-dt-radio-identity.patch and contains a
+debug log call after the assignment, so a long trailing context (as in
+the first version of this patch) does not match the real source.
 
 --- a/drivers/net/wireless/ath/ath12k/htc.c
 +++ b/drivers/net/wireless/ath/ath12k/htc.c
-@@ -779,14 +779,14 @@ int ath12k_htc_init(struct ath12k_base *
- 		break;
- 	}
- 
- 	/* PHY capability is queried before firmware startup. A chip's maximum
- 	 * radio count can exceed the PHYs enabled by its board firmware.
- 	 */
- 	if (ab->qmi.num_radios && ab->qmi.num_radios <= ab->hw_params->max_radios)
- 		htc->wmi_ep_count = min_t(u8, htc->wmi_ep_count, ab->qmi.num_radios);
- 
+@@ -788,4 +788,4 @@
 -	if (!of_property_read_u32(ab->dev->of_node, "qcom,num-radios",
 -				  &num_radios) && num_radios) {
 +	extern int ath12k_be7000_num_radios(struct ath12k_base *, u32 *);
 +	if (!ath12k_be7000_num_radios(ab, &num_radios) && num_radios) {
  		num_radios = min_t(u32, num_radios, ab->hw_params->max_radios);
  		htc->wmi_ep_count = min_t(u8, htc->wmi_ep_count, num_radios);
- 	}
