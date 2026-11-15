@@ -99,12 +99,25 @@ find_primary_5g_iface() {
 }
 
 prepare_wireless() {
-	local mode r i base o v
+	local mode r i base o v applied
 	board_ok || return 0
+	mode=$(get_mode)
+	applied=$(uci -q get "$CFG.settings.applied")
+
+	# First boot after flashing: keep the factory SSIDs untouched and just
+	# record the active mode, so an upgrade never renames existing networks.
+	[ -n "$applied" ] || {
+		uci -q set "$CFG.settings.applied=$mode"
+		uci -q commit "$CFG"
+		return 0
+	}
+
+	# Idempotent: do not rewrite user wireless settings on every boot.
+	[ "$applied" = "$mode" ] && return 0
+
 	r=$(find_primary_5g_radio) || return 1
 	i=$(find_primary_5g_iface) || return 1
 	base=$(ssid_base)
-	mode=$(get_mode)
 
 	if [ "$mode" = dual ]; then
 		[ -n "$(uci -q get wireless.radio2)" ] || {
@@ -186,7 +199,9 @@ set_mode() {
 	uci -q commit "$CFG"
 	prepare_cal || json_fail calibration
 	prepare_modules || json_fail modules
-	prepare_wireless || json_fail wireless
+	# The wireless layout is migrated on the next boot (see boot), once the
+	# new number of radios is actually present. Changing it here would leave
+	# a radio2 section pointing at a phy that does not exist yet.
 	status
 }
 
