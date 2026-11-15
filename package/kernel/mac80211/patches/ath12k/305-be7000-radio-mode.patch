@@ -92,18 +92,6 @@ This patch applies on top of 301-ath12k-dt-radio-identity.patch.
  			board_id =
  				ath12k_pci_read32(ab, ab->hw_params->otp_board_id_register);
  			board_id = u32_get_bits(board_id, OTP_BOARD_ID_MASK);
---- a/drivers/net/wireless/ath/ath12k/htc.c
-+++ b/drivers/net/wireless/ath/ath12k/htc.c
-@@ -779,7 +779,7 @@
- 		break;
- 	}
- 
--	if (!of_property_read_u32(ab->dev->of_node, "qcom,num-radios",
--				  &num_radios) && num_radios) {
-+	extern int ath12k_be7000_num_radios(struct ath12k_base *, u32 *);
-+	if (!ath12k_be7000_num_radios(ab, &num_radios) && num_radios) {
- 		num_radios = min_t(u32, num_radios, ab->hw_params->max_radios);
- 		htc->wmi_ep_count = min_t(u8, htc->wmi_ep_count, num_radios);
 --- a/drivers/net/wireless/ath/ath12k/qmi.c
 +++ b/drivers/net/wireless/ath/ath12k/qmi.c
 @@ -2322,5 +2322,5 @@
