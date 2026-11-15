@@ -90,7 +90,7 @@ define Device/xiaomi_be7000
 	$(call Device/xiaomi_be7000-common)
 	DEVICE_MODEL := BE7000
 	SOC := ipq9554
-	DEVICE_PACKAGES += ipq-wifi-xiaomi_be7000
+	DEVICE_PACKAGES += ipq-wifi-xiaomi_be7000 luci-app-be7000-radio
 	SUPPORTED_DEVICES += xiaomi,be7000
 endef
 TARGET_DEVICES += xiaomi_be7000
