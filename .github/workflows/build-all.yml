@@ -80,11 +80,6 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Inject BE7000 radio mode UI into LuCI wireless view
-        run: |
-          python3 package/emortal/luci-app-be7000-radio/tools/inject-luci.py \
-            feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js
-
       - name: Prepare build config
         run: |
           echo "CONFIG_DEVEL=y" >> .config
