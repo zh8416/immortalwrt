@@ -6,6 +6,7 @@
 'require rpc';
 'require poll';
 'require dom';
+'require ui';
 
 const callServiceList = rpc.declare({
 	object: 'service',
@@ -15,6 +16,23 @@ const callServiceList = rpc.declare({
 });
 
 const callSystemBoard = rpc.declare({ object: 'system', method: 'board', expect: { '': {} } });
+
+const callBe7000RadioStatus = rpc.declare({ object: 'be7000.radio', method: 'status', expect: {} });
+const callBe7000RadioSet = rpc.declare({ object: 'be7000.radio', method: 'set', params: [ 'mode' ], expect: {} });
+const callSystemReboot = rpc.declare({ object: 'system', method: 'reboot', expect: { result: 0 } });
+
+function radioOptions(section) {
+	section.tab('radio', _('RF mode'));
+
+	let o = section.taboption('radio', form.DummyValue, '_radio_status', _('Runtime status'));
+	o.renderWidget = function() { return section.map.radioStatus; };
+
+	o = section.taboption('radio', form.DummyValue, '_radio_mode', _('5 GHz radio mode'));
+	o.renderWidget = function() { return section.map.radioSelect; };
+
+	o = section.taboption('radio', form.DummyValue, '_radio_apply', _('Apply mode'));
+	o.renderWidget = function() { return section.map.radioApply; };
+}
 
 function nfcOptions(section) {
 	section.tab('nfc', 'NFC');
@@ -371,7 +389,8 @@ return view.extend({
 		this.fanHistory = [];
 		this.ledStatus = E('span', {}, _('Collecting data...'));
 		this.nfcStatus = m.nfcStatus = E('span', {}, _('Collecting data...'));
-		if (/^xiaomi,be10000(?:-es)?$/.test(data[2].board_name || '')) {
+		const boardName = data[2].board_name || '';
+		if (/^xiaomi,be10000(?:-es)?$/.test(boardName)) {
 			s.tab('fan', _('Fan'));
 			s.tab('led', _('RGB lighting'));
 
@@ -470,13 +489,113 @@ return view.extend({
 		}
 		nfcOptions(s);
 
+		if (boardName === 'xiaomi,be7000') {
+			this.radioStatus = m.radioStatus = E('span', {}, _('Collecting data...'));
+			this.radioSelect = m.radioSelect = E('span');
+			this.radioApply = m.radioApply = E('span');
+			radioOptions(s);
+		}
+
 		return m.render().then(L.bind(function(node) {
 			node.insertBefore(E('link', {
 				'rel': 'stylesheet',
 				'href': L.resource('view/xiaomi-control.css')
 			}), node.firstChild);
 			poll.add(L.bind(this.updateStatus, this), 5);
+			if (boardName === 'xiaomi,be7000')
+				this.setupRadio();
 			return this.updateStatus().then(function() { return node; });
 		}, this));
+	},
+
+	setupRadio: function() {
+		const isDual = function(mode) { return mode === 'dual'; };
+		const modeName = function(mode) { return isDual(mode) ? _('Tri-band') : _('Dual-band'); };
+
+		const select = E('select', { 'class': 'cbi-input-select', 'style': 'min-width:24em' }, [
+			E('option', { 'value': 'single' }, _('Dual-band: 2.4G 4x4 + 5G 4x4 (full band)')),
+			E('option', { 'value': 'dual' }, _('Tri-band: 2.4G 4x4 + 5.2G 2x2 + 5.8G 2x2'))
+		]);
+		dom.content(this.radioSelect, E('div', {}, [
+			select,
+			E('p', { 'class': 'cbi-section-descr' },
+				_('Switch between a single 5 GHz 4x4 radio (full band) and two 5 GHz 2x2 radios (5.2G + 5.8G). Changing the mode requires a reboot.'))
+		]));
+
+		const description = E('div', { 'class': 'cbi-section-descr' });
+		const preview = E('p');
+		const button = E('button', { 'class': 'cbi-button cbi-button-action important' }, _('Save and reboot'));
+		const message = E('p', { 'role': 'status' });
+		dom.content(this.radioApply, E('div', {}, [
+			description, preview,
+			E('p', {}, _('Switching reboots the router. Save your work first.')),
+			button, message
+		]));
+
+		let state = {};
+		const describe = function() {
+			const value = select.value;
+			const base = state.ssid_base || 'OWRT-Xiaomi';
+			if (value === 'dual') {
+				dom.content(description, E('div', {}, [
+					E('p', {}, _('After switching: the 5G 4x4 radio is split into two independent 2x2 radios (5.2G + 5.8G).')),
+					E('ul', {}, [
+						E('li', {}, _('New SSID: %s-5.8G (channel 149 / 80 MHz), for a dedicated backhaul or gaming').format(base)),
+						E('li', {}, _('Primary 5G renamed to %s-5.2G (channel 36 / 80 MHz); password and encryption inherited').format(base)),
+						E('li', {}, _('Single-client peak and coverage drop; multi-client concurrency and dedicated backhaul improve'))
+					])
+				]));
+			}
+			else {
+				dom.content(description, E('div', {}, [
+					E('p', {}, _('After switching: restore a single 5G 4x4 radio covering the full band (160 MHz).')),
+					E('ul', {}, [
+						E('li', {}, _('SSID returns to %s-5G; the tri-band config is kept but disabled, never deleted').format(base)),
+						E('li', {}, _('Single-client peak and coverage restored'))
+					])
+				]));
+			}
+			dom.content(preview, _('SSIDs after switch: %s').format(state.ssid_preview || ''));
+		};
+
+		const refresh = L.bind(function() {
+			return L.resolveDefault(callBe7000RadioStatus(), {}).then(L.bind(function(st) {
+				if (!st || typeof st !== 'object') return;
+				state = st;
+				if (st.available === false) {
+					dom.content(this.radioStatus, _('RF mode control is only available on the Xiaomi BE7000.'));
+					return;
+				}
+				if (st.error)
+					dom.content(this.radioStatus, _('Error: %s').format(st.error));
+				else if (st.pending)
+					dom.content(this.radioStatus, _('Current: %s | Selected: %s | effective after reboot')
+						.format(modeName(st.current), modeName(st.selected)));
+				else
+					dom.content(this.radioStatus, _('Current: %s').format(modeName(st.current)));
+				select.value = st.selected || 'single';
+				describe();
+			}, this));
+		}, this);
+
+		select.addEventListener('change', describe);
+		button.addEventListener('click', L.bind(function() {
+			button.disabled = true;
+			message.textContent = _('Saving...');
+			callBe7000RadioSet(select.value).then(function(res) {
+				if (res && res.error) throw new Error(res.error);
+				return callSystemReboot();
+			}).then(function() {
+				ui.showModal(_('Rebooting...'), [ E('p', { 'class': 'spinning' }, _('Waiting for the device to come back...')) ]);
+				ui.awaitReconnect();
+			}).catch(function(err) {
+				ui.addNotification(null, E('p', {}, err.message), 'error');
+				message.textContent = '';
+				button.disabled = false;
+			});
+		}, this));
+
+		poll.add(refresh, 5);
+		return refresh();
 	}
 });

@@ -408,3 +408,78 @@ msgstr ""
 #: package/emortal/luci-app-xiaomi-control/root/usr/share/luci/menu.d/luci-app-xiaomi-control.json:10
 msgid "Xiaomi Control"
 msgstr ""
+
+msgid "RF mode"
+msgstr ""
+
+msgid "5 GHz radio mode"
+msgstr ""
+
+msgid "Dual-band: 2.4G 4x4 + 5G 4x4 (full band)"
+msgstr ""
+
+msgid "Tri-band: 2.4G 4x4 + 5.2G 2x2 + 5.8G 2x2"
+msgstr ""
+
+msgid "Switch between a single 5 GHz 4x4 radio (full band) and two 5 GHz 2x2 radios (5.2G + 5.8G). Changing the mode requires a reboot."
+msgstr ""
+
+msgid "Apply mode"
+msgstr ""
+
+msgid "Tri-band"
+msgstr ""
+
+msgid "Dual-band"
+msgstr ""
+
+msgid "After switching: the 5G 4x4 radio is split into two independent 2x2 radios (5.2G + 5.8G)."
+msgstr ""
+
+msgid "New SSID: %s-5.8G (channel 149 / 80 MHz), for a dedicated backhaul or gaming"
+msgstr ""
+
+msgid "Primary 5G renamed to %s-5.2G (channel 36 / 80 MHz); password and encryption inherited"
+msgstr ""
+
+msgid "Single-client peak and coverage drop; multi-client concurrency and dedicated backhaul improve"
+msgstr ""
+
+msgid "After switching: restore a single 5G 4x4 radio covering the full band (160 MHz)."
+msgstr ""
+
+msgid "SSID returns to %s-5G; the tri-band config is kept but disabled, never deleted"
+msgstr ""
+
+msgid "Single-client peak and coverage restored"
+msgstr ""
+
+msgid "SSIDs after switch: %s"
+msgstr ""
+
+msgid "Current: %s"
+msgstr ""
+
+msgid "Current: %s | Selected: %s | effective after reboot"
+msgstr ""
+
+msgid "RF mode control is only available on the Xiaomi BE7000."
+msgstr ""
+
+msgid "Error: %s"
+msgstr ""
+
+msgid "Saving..."
+msgstr ""
+
+msgid "Save and reboot"
+msgstr ""
+
+msgid "Rebooting..."
+msgstr ""
+
+msgid "Waiting for the device to come back..."
+msgstr ""
+
+msgid "Switching reboots the router. Save your work first."
+msgstr ""

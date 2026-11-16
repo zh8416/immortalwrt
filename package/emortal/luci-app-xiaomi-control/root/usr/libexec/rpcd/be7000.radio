@@ -1,0 +1,19 @@
+#!/bin/sh
+
+case "$1:$2" in
+	list:)
+		printf '%s\n' '{"status":{},"set":{"mode":""}}'
+		;;
+	call:status)
+		exec /usr/libexec/be7000-radio status
+		;;
+	call:set)
+		. /usr/share/libubox/jshn.sh
+		json_load "$(cat)" || exit 1
+		json_get_var mode mode
+		exec /usr/libexec/be7000-radio set "$mode"
+		;;
+	*)
+		exit 1
+		;;
+esac

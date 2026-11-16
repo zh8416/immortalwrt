@@ -1,9 +1,14 @@
 {
 	"luci-app-xiaomi-control": {
-		"description": "Grant access to Xiaomi fan, RGB lighting and NFC control",
+		"description": "Grant access to Xiaomi fan, RGB lighting, NFC and RF mode control",
 		"read": {
-			"uci": [ "xiaomi-control", "wireless" ],
-			"ubus": { "service": [ "list" ], "system": [ "board" ], "file": [ "read" ] },
+			"uci": [ "xiaomi-control", "be7000_radio", "wireless" ],
+			"ubus": {
+				"service": [ "list" ],
+				"system": [ "board" ],
+				"file": [ "read" ],
+				"be7000.radio": [ "status" ]
+			},
 			"file": {
 				"/var/run/xiaomi-control.json": [ "read" ],
 				"/tmp/run/xiaomi-control.json": [ "read" ],
@@ -12,7 +17,11 @@
 			}
 		},
 		"write": {
-			"uci": [ "xiaomi-control" ]
+			"uci": [ "xiaomi-control", "be7000_radio" ],
+			"ubus": {
+				"be7000.radio": [ "set" ],
+				"system": [ "reboot" ]
+			}
 		}
 	}
 }

@@ -1,0 +1,218 @@
+#!/bin/sh
+# Xiaomi BE7000 dual/tri-band 5 GHz radio mode controller.
+# Only ever active on xiaomi,be7000. Any other board gets available=0.
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions/system.sh
+
+CAL=/lib/firmware/ath12k/QCN9274/hw2.0/cal-pci-0002:01:00.0.bin
+MODULES=/etc/modules.d/ath12k
+LOCK=/var/lock/be7000-radio.lock
+CFG=be7000_radio
+
+board_ok() {
+	[ "$(cat /tmp/sysinfo/board_name 2>/dev/null)" = "xiaomi,be7000" ]
+}
+
+get_mode() {
+	local m
+	m=$(uci -q get "$CFG.settings.mode")
+	[ "$m" = dual ] && echo dual || echo single
+}
+
+current_mode() {
+	local p=/sys/module/ath12k/parameters/be7000_dual
+	if [ -r "$p" ] && [ "$(cat "$p")" = 1 ]; then
+		echo dual
+	else
+		echo single
+	fi
+}
+
+# 0:art holds two calibration blocks:
+#   single (one 5 GHz 4x4 radio): offset 0x65000 = 101 * 4096
+#   dual   (two 5 GHz 2x2 radios): offset 0x33000 =  51 * 4096
+prepare_cal() {
+	local art skip mode tmp
+	board_ok || return 0
+	art=$(find_mtd_chardev "0:art") || return 1
+	[ -c "$art" ] || return 1
+	mode=$(get_mode)
+	case "$mode" in
+		dual) skip=51 ;;
+		*)    skip=101 ;;
+	esac
+	tmp="$CAL.tmp.$$"
+	dd if="$art" of="$tmp" bs=4096 skip="$skip" count=45 iflag=fullblock 2>/dev/null || {
+		rm -f "$tmp"; return 1; }
+	[ "$(wc -c < "$tmp")" = 184320 ] || { rm -f "$tmp"; return 1; }
+	mv "$tmp" "$CAL" || return 1
+	logger -t be7000-radio "prepared $mode calibration (art skip=$skip)"
+}
+
+# ath12k is loaded by kmodloader from /etc/modules.d/ath12k.
+# The be7000_dual module parameter must be present before probe, hence the
+# file is written now and takes effect on the following boot (a reboot is
+# always required when the number of radios changes).
+prepare_modules() {
+	local dual=0
+	[ "$(get_mode)" = dual ] && dual=1
+	[ -f "$MODULES" ] || return 1
+	printf 'ath12k be7000_dual=%s\nath12k_wifi7\n' "$dual" > "$MODULES" || return 1
+}
+
+# Derive a stable SSID base from the current primary 5 GHz SSID.
+ssid_base() {
+	local b
+	b=$(uci -q get "$CFG.settings.ssid_base")
+	if [ -z "$b" ]; then
+		b=$(find_primary_5g_iface)
+		b=$(uci -q get "wireless.$b.ssid")
+		b=${b%-5G}; b=${b%-5.2G}; b=${b%-5.8G}; b=${b%_High}
+		[ -n "$b" ] || b=OWRT-Xiaomi
+		uci -q set "$CFG.settings.ssid_base=$b"
+		uci -q commit "$CFG"
+	fi
+	printf '%s' "$b"
+}
+
+find_primary_5g_radio() {
+	local s
+	for s in $(uci -q show wireless | sed -n 's/^wireless\.\([^.=]*\)=wifi-device$/\1/p'); do
+		[ "$(uci -q get "wireless.$s.band")" = 5g ] || continue
+		case "$(uci -q get "wireless.$s.path")" in
+			*20000000*) printf '%s' "$s"; return 0 ;;
+		esac
+	done
+	return 1
+}
+
+find_primary_5g_iface() {
+	local r i
+	r=$(find_primary_5g_radio) || return 1
+	for i in $(uci -q show wireless | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p'); do
+		[ "$(uci -q get "wireless.$i.device")" = "$r" ] || continue
+		[ "$(uci -q get "wireless.$i.mode")" = ap ] || continue
+		printf '%s' "$i"; return 0
+	done
+	return 1
+}
+
+prepare_wireless() {
+	local mode r i base o v applied
+	board_ok || return 0
+	mode=$(get_mode)
+	applied=$(uci -q get "$CFG.settings.applied")
+
+	# First boot after flashing: keep the factory SSIDs untouched and just
+	# record the active mode, so an upgrade never renames existing networks.
+	[ -n "$applied" ] || {
+		uci -q set "$CFG.settings.applied=$mode"
+		uci -q commit "$CFG"
+		return 0
+	}
+
+	# Idempotent: do not rewrite user wireless settings on every boot.
+	[ "$applied" = "$mode" ] && return 0
+
+	r=$(find_primary_5g_radio) || return 1
+	i=$(find_primary_5g_iface) || return 1
+	base=$(ssid_base)
+
+	if [ "$mode" = dual ]; then
+		[ -n "$(uci -q get wireless.radio2)" ] || {
+			uci -q set wireless.radio2=wifi-device
+			uci -q set "wireless.radio2.type=mac80211"
+			for o in path band country txpower; do
+				v=$(uci -q get "wireless.$r.$o")
+				[ -z "$v" ] || uci -q set "wireless.radio2.$o=$v"
+			done
+			uci -q set wireless.radio2.radio=1
+			uci -q set wireless.radio2.channel=149
+			uci -q set wireless.radio2.htmode=EHT80
+			uci -q set wireless.radio2.noscan=1
+		}
+		[ -n "$(uci -q get wireless.default_radio2)" ] || {
+			uci -q set wireless.default_radio2=wifi-iface
+			for o in mode network encryption key ieee80211w isolate hidden; do
+				v=$(uci -q get "wireless.$i.$o")
+				[ -z "$v" ] || uci -q set "wireless.default_radio2.$o=$v"
+			done
+			uci -q set wireless.default_radio2.device=radio2
+			uci -q set "wireless.default_radio2.ssid=${base}-5.8G"
+		}
+		uci -q set wireless.radio2.disabled=0
+		uci -q set "wireless.default_radio2.ssid=${base}-5.8G"
+		uci -q set "wireless.default_radio2.disabled=0"
+		uci -q set "wireless.$r.radio=0"
+		uci -q set "wireless.$r.channel=36"
+		uci -q set "wireless.$r.htmode=EHT80"
+		uci -q set "wireless.$i.ssid=${base}-5.2G"
+	else
+		[ -z "$(uci -q get wireless.radio2)" ] || uci -q set wireless.radio2.disabled=1
+		[ -z "$(uci -q get wireless.default_radio2)" ] || uci -q set wireless.default_radio2.disabled=1
+		uci -q delete "wireless.$r.radio"
+		uci -q set "wireless.$i.ssid=${base}-5G"
+	fi
+	uci -q commit wireless
+	uci -q set "$CFG.settings.applied=$mode"
+	uci -q commit "$CFG"
+}
+
+json_fail() {
+	json_init
+	json_add_string error "$1"
+	json_dump
+	exit 0
+}
+
+status() {
+	local available=0 cur sel base
+	board_ok && available=1
+	cur=$(current_mode)
+	sel=$(get_mode)
+	base=$(ssid_base 2>/dev/null)
+	json_init
+	json_add_boolean available "$available"
+	json_add_string current "$cur"
+	json_add_string selected "$sel"
+	[ "$cur" = "$sel" ] && json_add_boolean pending 0 || json_add_boolean pending 1
+	json_add_string ssid_base "$base"
+	if [ "$sel" = dual ]; then
+		json_add_string ssid_preview "${base}-2.4G / ${base}-5.2G / ${base}-5.8G"
+	else
+		json_add_string ssid_preview "${base}-2.4G / ${base}-5G"
+	fi
+	json_dump
+}
+
+set_mode() {
+	local mode=$1
+	board_ok || json_fail unavailable
+	case "$mode" in
+		single|dual) ;;
+		*) json_fail bad_mode ;;
+	esac
+	exec 9>"$LOCK"
+	flock -n 9 || json_fail busy
+	uci -q set "$CFG.settings.mode=$mode"
+	uci -q commit "$CFG"
+	prepare_cal || json_fail calibration
+	prepare_modules || json_fail modules
+	# The wireless layout is migrated on the next boot (see boot), once the
+	# new number of radios is actually present. Changing it here would leave
+	# a radio2 section pointing at a phy that does not exist yet.
+	status
+}
+
+case "${1:-}" in
+	status) status; exit 0 ;;
+	set)    set_mode "${2:-}"; exit 0 ;;
+	boot)
+		board_ok || exit 0
+		prepare_cal || logger -t be7000-radio 'calibration preparation failed'
+		prepare_modules || logger -t be7000-radio 'module parameter preparation failed'
+		prepare_wireless || logger -t be7000-radio 'wireless preparation failed'
+		exit 0 ;;
+	*) exit 1 ;;
+esac
