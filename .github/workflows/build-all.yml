@@ -164,6 +164,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
+          # 固件文件名时间戳（北京时间）：全工作流只生成一次，artifacts 与 release 共用
+          STAMP=$(TZ=Asia/Shanghai date +'%Y.%m.%d-%H.%M.%S')
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          echo "固件文件名时间戳: $STAMP"
           T="bin/targets/qualcommbe/ipq95xx"
           [ -d "$T" ] || { echo "::error::未找到输出目录 $T"; exit 1; }
 
@@ -181,7 +185,8 @@ jobs:
             if [ -z "$f" ]; then
               echo "::error::缺少 ${dev} 的 .${ext} 产物"; exit 1
             fi
-            cp "$f" "release-assets/$(basename "$f")"
+            base=$(basename "$f")
+            cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
           }
           for dev in xiaomi_be7000 xiaomi_be10000; do
             pick "$dev" "squashfs-sysupgrade" "bin"
