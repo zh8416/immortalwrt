@@ -5,9 +5,14 @@ on:
   workflow_dispatch:
     inputs:
       config_file:
-        description: '配置文件（双机型请用 all.config；单机型请用旧工作流）'
+        description: '配置文件（输入指定config文件名）'
         required: true
         default: 'all.config'
+        type: string
+      extra_packages:
+        description: '额外软件包（可选，空格分隔，无效包名或已启用=y的包会自动忽略）'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -96,12 +101,55 @@ jobs:
           grep -qx 'CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=y' .config || {
             echo "::error::BE10000 设备未被选中"; exit 1; }
           echo "双机型配置校验通过"
-          # 诊断：确认 luci-app-be7000-radio 是否已注册进包索引（只读，不影响构建）
-          echo "--- be7000-radio 注册状态 ---"
-          grep -E '^CONFIG_PACKAGE_luci-app-be7000-radio' .config || echo "(未出现在 .config)"
-          grep -c 'PACKAGE_luci-app-be7000-radio' tmp/.config-package.in 2>/dev/null || true
-          echo "--- 诊断结束 ---"
           grep -E '^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be)' .config
+
+      - name: Apply extra packages
+        env:
+          EXTRA_PACKAGES: ${{ github.event.inputs.extra_packages }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EXTRA_PACKAGES:-}" ]; then
+            echo "未填写额外软件包，跳过。"
+            exit 0
+          fi
+          PKGIDX=tmp/.config-package.in
+          if [ ! -f "$PKGIDX" ]; then
+            echo "::error::包索引 $PKGIDX 不存在，无法校验包名"
+            exit 1
+          fi
+          added=0; skipped=0; invalid=0
+          for pkg in $EXTRA_PACKAGES; do
+            sym="CONFIG_PACKAGE_$pkg"
+            # 1) 已在基底中 =y：忽略
+            if grep -qx "${sym}=y" .config; then
+              echo "跳过 $pkg：config 中已启用 (=y)"
+              skipped=$((skipped+1))
+              continue
+            fi
+            # 2) 校验包名有效性：包索引里必须存在 PACKAGE_<pkg> 符号
+            if ! awk -v want="PACKAGE_$pkg" '$1=="config" && $2==want {f=1} END{exit !f}' "$PKGIDX"; then
+              echo "::warning::忽略 $pkg：不是有效的软件包名"
+              invalid=$((invalid+1))
+              continue
+            fi
+            # 3) 移除该符号的旧行（is not set / =m 等），再追加 =y
+            awk -v s="$sym" '
+              $0==s"=y" || $0=="# "s" is not set" || $0==s"=m" || $0=="# "s"=m" { next }
+              { print }
+            ' .config > .config.new && mv .config.new .config
+            echo "${sym}=y" >> .config
+            echo "添加 $pkg -> ${sym}=y"
+            added=$((added+1))
+          done
+          echo "额外软件包处理完成：新增 $added，跳过(已=y) $skipped，忽略(无效) $invalid"
+          if [ "$added" -gt 0 ]; then
+            export FORCE=1
+            make defconfig
+            echo "--- 已启用包核验 ---"
+            for pkg in $EXTRA_PACKAGES; do
+              grep -qx "CONFIG_PACKAGE_${pkg}=y" .config && echo "  ✓ $pkg" || echo "  ✗ $pkg 未生效(依赖未满足?)"
+            done
+          fi
 
       - name: Download sources
         run: make download -j4
