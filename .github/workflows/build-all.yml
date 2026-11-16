@@ -101,11 +101,6 @@ jobs:
           grep -qx 'CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=y' .config || {
             echo "::error::BE10000 设备未被选中"; exit 1; }
           echo "双机型配置校验通过"
-          # 诊断：确认 luci-app-be7000-radio 是否已注册进包索引（只读，不影响构建）
-          echo "--- be7000-radio 注册状态 ---"
-          grep -E '^CONFIG_PACKAGE_luci-app-be7000-radio' .config || echo "(未出现在 .config)"
-          grep -c 'PACKAGE_luci-app-be7000-radio' tmp/.config-package.in 2>/dev/null || true
-          echo "--- 诊断结束 ---"
           grep -E '^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be)' .config
 
       - name: Apply extra packages
