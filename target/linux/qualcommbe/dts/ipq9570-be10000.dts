@@ -110,27 +110,28 @@
 		};
 	};
 
-	/* Top RGB light bar: stock "pwm-rgb" on PWM 1/2/3, gpio31/32/33, 51000 ns */
 	leds_rgb: leds-rgb {
 		compatible = "pwm-leds";
 
-		led_bar_red: bar-red {
+		bar-red {
 			label = "red:ambient";
 			pwms = <&pwm 3 51000 0>;
 			max-brightness = <255>;
-			default-state = "keep";
+			default-state = "off";
 		};
-		led_bar_green: bar-green {
+
+		bar-green {
 			label = "green:ambient";
 			pwms = <&pwm 2 51000 0>;
 			max-brightness = <255>;
-			default-state = "keep";
+			default-state = "off";
 		};
-		led_bar_blue: bar-blue {
+
+		bar-blue {
 			label = "blue:ambient";
 			pwms = <&pwm 1 51000 0>;
 			max-brightness = <255>;
-			default-state = "keep";
+			default-state = "off";
 		};
 	};
 
@@ -162,22 +163,19 @@
 	pinctrl-names = "default";
 	clock-frequency = <100000>;
 	status = "okay";
+
 	fan_controller: fan-controller@2f {
 		compatible = "microchip,emc2301", "microchip,emc2305";
 		reg = <0x2f>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		#pwm-cells = <3>;
+
 		fan@0 {
 			reg = <0>;
 			pwms = <&fan_controller 26000 0 1>;
 			#cooling-cells = <2>;
 		};
-	};
-
-	temp_fan: temperature-sensor@4c {
-		compatible = "national,lm63";
-		reg = <0x4c>;
 	};
 };
 
@@ -449,6 +447,7 @@
 		drive-strength = <8>;
 		bias-disable;
 	};
+
 	gpio_keys_default: gpio-keys-state {
 		pins = "gpio44", "gpio45";
 		function = "gpio";

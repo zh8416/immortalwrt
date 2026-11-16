@@ -1,7 +1,0 @@
-{
-	"luci-app-xiaomi-nfc": {
-		"description": "Configure NFC Wi-Fi sharing",
-		"read": { "ubus": { "xiaomi.nfc": [ "status" ] } },
-		"write": { "ubus": { "xiaomi.nfc": [ "set" ] } }
-	}
-}

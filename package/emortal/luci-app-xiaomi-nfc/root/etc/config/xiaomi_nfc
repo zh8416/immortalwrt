@@ -1,3 +1,0 @@
-config settings 'settings'
-	option enabled '0'
-	option iface ''

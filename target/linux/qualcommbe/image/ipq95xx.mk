@@ -90,7 +90,8 @@ define Device/xiaomi_be7000
 	$(call Device/xiaomi_be7000-common)
 	DEVICE_MODEL := BE7000
 	SOC := ipq9554
-	DEVICE_PACKAGES += ipq-wifi-xiaomi_be7000 luci-app-be7000-radio
+	DEVICE_PACKAGES += ipq-wifi-xiaomi_be7000 \
+		luci-app-xiaomi-control luci-i18n-xiaomi-control-zh-cn
 	SUPPORTED_DEVICES += xiaomi,be7000
 endef
 TARGET_DEVICES += xiaomi_be7000
@@ -119,8 +120,8 @@ define Device/xiaomi_be10000
 	$(call Device/xiaomi_be10000-common)
 	DEVICE_MODEL := BE10000
 	SOC := ipq9570
-	DEVICE_PACKAGES += ipq-wifi-xiaomi_be10000
-	DEVICE_PACKAGES += be10000-fan-rgb
+	DEVICE_PACKAGES += ipq-wifi-xiaomi_be10000 \
+		luci-app-xiaomi-control luci-i18n-xiaomi-control-zh-cn
 endef
 TARGET_DEVICES += xiaomi_be10000
 
