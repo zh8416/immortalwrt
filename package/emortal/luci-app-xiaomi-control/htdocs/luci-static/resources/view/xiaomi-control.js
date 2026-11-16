@@ -126,203 +126,6 @@ function nfcFault(error) {
 	return _(error);
 }
 
-const FAN_HISTORY_WINDOW_MS = 2 * 60 * 1000;
-const FAN_TIME_GRID_MS = 10 * 1000;
-const FAN_TIME_LABEL_MS = 30 * 1000;
-const FAN_VALUE_DIVISIONS = 4;
-
-function fanValidNumber(value) {
-	const n = Number(value);
-	return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-function fanAppendHistory(history, running, fan) {
-	const now = Date.now();
-	const temperature = fanValidNumber(fan.temperature);
-	const pwm = fanValidNumber(fan.pwm);
-	const rpm = fanValidNumber(fan.rpm);
-	history.push({
-		time: now,
-		temperature: running && temperature != null ? temperature / 1000 : null,
-		pwm: running && pwm != null ? pwm * 100 / 255 : null,
-		rpm: running ? rpm : null
-	});
-	while (history.length && history[0].time < now - FAN_HISTORY_WINDOW_MS)
-		history.shift();
-}
-
-function fanChartScale(history, key, minimumMax, step) {
-	let maximum = minimumMax;
-	history.forEach(function(sample) {
-		if (sample[key] != null)
-			maximum = Math.max(maximum, sample[key]);
-	});
-	return Math.ceil(maximum / step) * step;
-}
-
-function fanDrawChart(canvas, history, key, options) {
-	if (!canvas)
-		return;
-	const style = window.getComputedStyle(canvas);
-	const width = Math.max(canvas.clientWidth, 1);
-	const height = Math.max(canvas.clientHeight, 1);
-	const ratio = Math.min(window.devicePixelRatio || 1, 2);
-	const context = canvas.getContext('2d');
-	if (!context)
-		return;
-	const padding = { left: 28, right: 5, top: 6, bottom: 14 };
-	const plotWidth = Math.max(width - padding.left - padding.right, 1);
-	const plotHeight = Math.max(height - padding.top - padding.bottom, 1);
-	const plotBottom = padding.top + plotHeight;
-	const now = history.length ? history[history.length - 1].time : Date.now();
-	const start = now - FAN_HISTORY_WINDOW_MS;
-	const maximum = fanChartScale(history, key, options.minimumMax, options.step);
-	const lineColor = style.getPropertyValue('--fancontrol-chart-line').trim() || '#1976d2';
-	const fillColor = style.getPropertyValue('--fancontrol-chart-fill').trim() || 'rgba(25, 118, 210, .2)';
-	const labelColor = style.color || '#666';
-	const gridColor = 'rgba(127, 127, 127, .2)';
-	let segment = [];
-	canvas.width = Math.round(width * ratio);
-	canvas.height = Math.round(height * ratio);
-	context.setTransform(ratio, 0, 0, ratio, 0, 0);
-	context.clearRect(0, 0, width, height);
-	context.strokeStyle = gridColor;
-	context.lineWidth = 1;
-	context.beginPath();
-	for (let elapsed = 0; elapsed <= FAN_HISTORY_WINDOW_MS; elapsed += FAN_TIME_GRID_MS) {
-		const x = padding.left + plotWidth * elapsed / FAN_HISTORY_WINDOW_MS;
-		context.moveTo(x, padding.top);
-		context.lineTo(x, plotBottom);
-	}
-	for (let division = 0; division <= FAN_VALUE_DIVISIONS; division++) {
-		const y = padding.top + plotHeight * division / FAN_VALUE_DIVISIONS;
-		context.moveTo(padding.left, y);
-		context.lineTo(padding.left + plotWidth, y);
-	}
-	context.stroke();
-	context.fillStyle = labelColor;
-	context.font = '9px sans-serif';
-	context.textAlign = 'right';
-	context.textBaseline = 'top';
-	context.fillText(options.format(maximum), padding.left - 4, padding.top - 1);
-	context.textBaseline = 'bottom';
-	context.fillText(options.format(0), padding.left - 4, plotBottom + 1);
-	context.textBaseline = 'middle';
-	context.fillText(options.format(maximum / 2), padding.left - 4, padding.top + plotHeight / 2);
-	context.textBaseline = 'bottom';
-	for (let elapsed = 0; elapsed <= FAN_HISTORY_WINDOW_MS; elapsed += FAN_TIME_LABEL_MS) {
-		const x = padding.left + plotWidth * elapsed / FAN_HISTORY_WINDOW_MS;
-		const remaining = (FAN_HISTORY_WINDOW_MS - elapsed) / 1000;
-		context.textAlign = elapsed === 0 ? 'left' : elapsed === FAN_HISTORY_WINDOW_MS ? 'right' : 'center';
-		context.fillText(remaining ? '-%ds'.format(remaining) : '0', x, height);
-	}
-	const point = function(sample) {
-		return {
-			x: padding.left + (sample.time - start) / FAN_HISTORY_WINDOW_MS * plotWidth,
-			y: plotBottom - sample[key] / maximum * plotHeight
-		};
-	};
-	const drawSegment = function() {
-		if (!segment.length)
-			return;
-		if (segment.length > 1) {
-			context.beginPath();
-			context.moveTo(segment[0].x, plotBottom);
-			segment.forEach(function(item) { context.lineTo(item.x, item.y); });
-			context.lineTo(segment[segment.length - 1].x, plotBottom);
-			context.closePath();
-			context.fillStyle = fillColor;
-			context.fill();
-			context.beginPath();
-			segment.forEach(function(item, index) {
-				if (index)
-					context.lineTo(item.x, item.y);
-				else
-					context.moveTo(item.x, item.y);
-			});
-			context.strokeStyle = lineColor;
-			context.lineWidth = 1.5;
-			context.lineJoin = 'round';
-			context.stroke();
-		}
-		else {
-			context.beginPath();
-			context.arc(segment[0].x, segment[0].y, 2, 0, Math.PI * 2);
-			context.fillStyle = lineColor;
-			context.fill();
-		}
-		segment = [];
-	};
-	history.forEach(function(sample) {
-		if (sample[key] == null) {
-			drawSegment();
-			return;
-		}
-		segment.push(point(sample));
-	});
-	drawSegment();
-}
-
-function fanStatusMetric(title, value, unit, chartClass) {
-	const canvas = E('canvas', {
-		'class': 'fancontrol-chart fancontrol-chart-%s'.format(chartClass),
-		'role': 'img',
-		'aria-label': title
-	});
-	const node = E('div', { 'class': 'fancontrol-metric' }, [
-		E('span', { 'class': 'fancontrol-metric-label' }, title),
-		E('div', { 'class': 'fancontrol-metric-reading' }, [
-			E('span', { 'class': 'fancontrol-metric-value' }, value),
-			unit ? E('span', { 'class': 'fancontrol-metric-unit' }, unit) : ''
-		]),
-		E('div', { 'class': 'fancontrol-chart-wrap' }, canvas)
-	]);
-	return { node: node, canvas: canvas };
-}
-
-function fanStatusDetail(title, value) {
-	return E('div', { 'class': 'fancontrol-detail' }, [
-		E('span', { 'class': 'fancontrol-detail-label' }, title),
-		E('span', { 'class': 'fancontrol-detail-value' }, value)
-	]);
-}
-
-function fanRenderStatus(node, running, fan, history) {
-	const temp = fanValidNumber(fan.temperature);
-	const pwm = fanValidNumber(fan.pwm);
-	const rpm = fanValidNumber(fan.rpm);
-	const pwmPercent = pwm != null ? Math.round(pwm * 100 / 255) : null;
-	const temperatureMetric = fanStatusMetric(_('Temperature'),
-		temp != null ? '%.1f'.format(temp / 1000) : '-', temp != null ? '°C' : '', 'temperature');
-	const pwmMetric = fanStatusMetric(_('PWM output'),
-		pwm != null ? String(pwm) : '-', pwm != null ? '/ 255 · %d%%'.format(pwmPercent) : '', 'pwm');
-	const rpmMetric = fanStatusMetric(_('Fan speed'),
-		rpm != null ? String(rpm) : '-', rpm != null ? 'RPM' : '', 'rpm');
-	dom.content(node, E('div', { 'class': 'fancontrol-status' }, [
-		E('div', { 'class': 'fancontrol-status-head' }, [
-			E('span', { 'class': 'fancontrol-status-title' }, _('Runtime Status')),
-			E('span', { 'class': running ? 'label success' : 'label warning' },
-				running ? _('Running') : _('Stopped'))
-		]),
-		E('div', { 'class': 'fancontrol-metrics' }, [
-			temperatureMetric.node, pwmMetric.node, rpmMetric.node
-		]),
-		E('div', { 'class': 'fancontrol-details' }, [
-			fanStatusDetail(_('Hottest sensor'), fan.sensor || '-'),
-			fanStatusDetail(_('Valid sensors'),
-				typeof fan.sensors == 'number' && Number.isFinite(fan.sensors) ? String(fan.sensors) : '-'),
-			fanStatusDetail(_('Profile'), fan.profile || '-'),
-			fanStatusDetail(_('Fault'), fault(fan.error))
-		])
-	]));
-	fanDrawChart(temperatureMetric.canvas, history, 'temperature',
-		{ minimumMax: 100, step: 10, format: function(v) { return '%d°'.format(v); } });
-	fanDrawChart(pwmMetric.canvas, history, 'pwm',
-		{ minimumMax: 100, step: 100, format: function(v) { return '%d%%'.format(v); } });
-	fanDrawChart(rpmMetric.canvas, history, 'rpm',
-		{ minimumMax: 1000, step: 500, format: function(v) { return String(v); } });
-}
-
 function metric(label, value) {
 	return E('div', { 'class': 'table-row' }, [
 		E('div', { 'class': 'td left', style: 'width:40%' }, label),
@@ -354,9 +157,19 @@ return view.extend({
 			try { nfc = JSON.parse(result[2]); } catch (e) { /* Not ready. */ }
 			dom.content(this.nfcStatus, nfc.error ? nfcFault(nfc.error) : !nfc.available ? _('NFC hardware unavailable.') :
 				nfc.enabled ? _('Written.') : _('NFC disabled.'));
+			const reading = function(value, format) {
+				return typeof value == 'number' && Number.isFinite(value) && value >= 0 ? format(value) : '-';
+			};
 
-			fanAppendHistory(this.fanHistory, running, fan);
-			fanRenderStatus(this.fanStatus, running, fan, this.fanHistory);
+			dom.content(this.fanStatus, E('div', { 'class': 'table' }, [
+				metric(_('Service'), running ? _('Running') : _('Stopped')),
+				metric(_('Temperature'), reading(fan.temperature, function(v) { return '%.1f °C'.format(v / 1000); })),
+				metric(_('Fan speed'), reading(fan.rpm, function(v) { return '%d RPM'.format(v); })),
+				metric(_('PWM output'), reading(fan.pwm, function(v) { return '%d / 255 (%d%%)'.format(v, Math.round(v * 100 / 255)); })),
+				metric(_('Hottest sensor'), fan.sensor || '-'),
+				metric(_('Valid sensors'), reading(fan.sensors, String)),
+				metric(_('Fault'), running && !status.fan ? _('Collecting data...') : fault(fan.error))
+			]));
 			dom.content(this.ledStatus, running ? (!status.led ? _('Collecting data...') :
 				(led.error ? fault(led.error) : _('Running'))) : _('Stopped'));
 		}, this));
@@ -368,7 +181,6 @@ return view.extend({
 		const s = m.section(form.NamedSection, 'settings', 'control');
 		s.addremove = false;
 		this.fanStatus = E('div', {}, _('Collecting data...'));
-		this.fanHistory = [];
 		this.ledStatus = E('span', {}, _('Collecting data...'));
 		this.nfcStatus = m.nfcStatus = E('span', {}, _('Collecting data...'));
 		if (/^xiaomi,be10000(?:-es)?$/.test(data[2].board_name || '')) {
@@ -471,10 +283,6 @@ return view.extend({
 		nfcOptions(s);
 
 		return m.render().then(L.bind(function(node) {
-			node.insertBefore(E('link', {
-				'rel': 'stylesheet',
-				'href': L.resource('view/xiaomi-control.css')
-			}), node.firstChild);
 			poll.add(L.bind(this.updateStatus, this), 5);
 			return this.updateStatus().then(function() { return node; });
 		}, this));
