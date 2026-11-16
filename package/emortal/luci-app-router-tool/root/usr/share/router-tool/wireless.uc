@@ -59,10 +59,15 @@ function default_ssid(uci, board, suffix, custom_ssid) {
 	let hostname = custom_ssid || uci.get_first('system', 'system', 'hostname') || 'OWRT';
 	let tail = suffix;
 	if (!custom_ssid) {
-		let vendor = split(board?.model?.id, ',')?.[0] || 'unknown';
+		let id = split(board?.model?.id, ',');
+		let vendor = id?.[0] || 'unknown';
 		vendor = uc(substr(vendor, 0, 1)) + substr(vendor, 1);
-		// Keep the vendor and band visible within the 32-byte SSID limit.
-		tail = substr(vendor, 0, 32 - length(suffix) - 3) + '-' + suffix;
+		// Include the device model so multi-profile builds get distinct SSIDs,
+		// e.g. OWRT-Xiaomi-BE10000-2.4G vs OWRT-Xiaomi-BE7000-2.4G.
+		let model = uc(id?.[1] || '');
+		let ident = length(model) ? vendor + '-' + model : vendor;
+		// Keep vendor, model and band visible within the 32-byte SSID limit.
+		tail = substr(ident, 0, 32 - length(suffix) - 3) + '-' + suffix;
 	}
 	let size = min(length(hostname), 31 - length(tail));
 	// Ucode string offsets count bytes. Avoid cutting a UTF-8 code point.
