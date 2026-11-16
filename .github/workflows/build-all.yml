@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       config_file:
-        description: '配置文件（双机型请用 all.config；单机型请用旧工作流）'
+        description: '配置文件（输入指定config文件名）'
         required: true
         default: 'all.config'
         type: string
       extra_packages:
-        description: '额外软件包（可选，空格分隔，如：luci-app-openclash adguardhome；无需 CONFIG_PACKAGE_ 前缀。无效包名或已启用=y的包会自动忽略）'
+        description: '额外软件包（可选，空格分隔，无效包名或已启用=y的包会自动忽略）'
         required: false
         default: ''
         type: string
