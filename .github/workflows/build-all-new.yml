@@ -5,15 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       config_file:
-        description: '配置文件（仓库根目录）：all.config=正式全功能，min.config=测试精简'
+        description: '配置文件（仓库根目录文件名，如 all.config / min.config；省略 .config 后缀也可）'
         required: true
         default: 'all.config'
-        type: choice
-        options:
-          - 'all.config'
-          - 'min.config'
-          - '7000.config'
-          - '10000.config'
+        type: string
       device:
         description: '编译机型（三选一）'
         required: true
@@ -86,13 +81,21 @@ jobs:
         env:
           CONFIG_FILE_INPUT: ${{ github.event.inputs.config_file }}
         run: |
-          CONFIG_FILE="${CONFIG_FILE_INPUT:-all.config}"
-          case "$CONFIG_FILE" in
-            */*|..*) echo "::error::非法的配置文件名：$CONFIG_FILE"; exit 1 ;;
+          RAW="${CONFIG_FILE_INPUT:-all.config}"
+          RAW="${RAW#./}"
+          # 允许相对子目录，但禁止绝对路径与 .. 跳出仓库
+          case "$RAW" in
+            ""|/*|*..*)
+              echo "::error::非法的配置文件名：$RAW（只填仓库内相对路径）"; exit 1 ;;
           esac
+          # 省略后缀时自动补 .config
+          CONFIG_FILE="$RAW"
+          if [ ! -f "$CONFIG_FILE" ] && [ -f "${CONFIG_FILE}.config" ]; then
+            CONFIG_FILE="${CONFIG_FILE}.config"
+          fi
           if [ ! -f "$CONFIG_FILE" ]; then
-            echo "::error::配置文件 $CONFIG_FILE 未在仓库根目录找到，终止编译。"
-            echo "当前可用的配置："
+            echo "::error::配置文件 $RAW 未找到，终止编译。"
+            echo "仓库根目录可用的配置："
             ls -1 *.config 2>/dev/null || echo "（无）"
             exit 1
           fi
