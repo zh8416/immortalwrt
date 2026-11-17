@@ -211,43 +211,32 @@ jobs:
             echo "未填写额外软件包，跳过。"
             exit 0
           fi
-          PKGIDX=tmp/.config-package.in
-          if [ ! -f "$PKGIDX" ]; then
-            echo "::error::包索引 $PKGIDX 不存在，无法校验包名"
+          # 依赖解析依赖包元数据（feeds install 之后才完整）
+          if [ ! -s tmp/.packageinfo ] || [ ! -s tmp/.config-package.in ]; then
+            echo "生成包元数据（make prepare-tmpinfo）..."
+            make prepare-tmpinfo
+          fi
+          if [ ! -s tmp/.packageinfo ]; then
+            echo "::error::包元数据 tmp/.packageinfo 生成失败，无法补齐依赖"
             exit 1
           fi
-          added=0; skipped=0; invalid=0
+          echo "请求的额外软件包：$EXTRA_PACKAGES"
+          # 自动补齐运行时依赖（含 kmod / docker 栈 / i18n 的父应用等）
+          python3 .github/scripts/resolve_pkg_deps.py .config $EXTRA_PACKAGES
+          export FORCE=1
+          make defconfig
+          echo "--- 已启用包核验 ---"
+          missing=0
           for pkg in $EXTRA_PACKAGES; do
-            sym="CONFIG_PACKAGE_$pkg"
-            # 1) 已在基底中 =y：忽略
-            if grep -qx "${sym}=y" .config; then
-              echo "跳过 $pkg：config 中已启用 (=y)"
-              skipped=$((skipped+1))
-              continue
+            if grep -qx "CONFIG_PACKAGE_${pkg}=y" .config; then
+              echo "  ✓ $pkg"
+            else
+              echo "  ✗ $pkg 未生效（包名无效或依赖不满足）"
+              missing=$((missing+1))
             fi
-            # 2) 校验包名有效性：包索引里必须存在 PACKAGE_<pkg> 符号
-            if ! awk -v want="PACKAGE_$pkg" '$1=="config" && $2==want {f=1} END{exit !f}' "$PKGIDX"; then
-              echo "::warning::忽略 $pkg：不是有效的软件包名"
-              invalid=$((invalid+1))
-              continue
-            fi
-            # 3) 移除该符号的旧行（is not set / =m 等），再追加 =y
-            awk -v s="$sym" '
-              $0==s"=y" || $0=="# "s" is not set" || $0==s"=m" || $0=="# "s"=m" { next }
-              { print }
-            ' .config > .config.new && mv .config.new .config
-            echo "${sym}=y" >> .config
-            echo "添加 $pkg -> ${sym}=y"
-            added=$((added+1))
           done
-          echo "额外软件包处理完成：新增 $added，跳过(已=y) $skipped，忽略(无效) $invalid"
-          if [ "$added" -gt 0 ]; then
-            export FORCE=1
-            make defconfig
-            echo "--- 已启用包核验 ---"
-            for pkg in $EXTRA_PACKAGES; do
-              grep -qx "CONFIG_PACKAGE_${pkg}=y" .config && echo "  ✓ $pkg" || echo "  ✗ $pkg 未生效(依赖未满足?)"
-            done
+          if [ "$missing" -gt 0 ]; then
+            echo "::warning::有 $missing 个额外软件包未生效，请检查上面日志"
           fi
 
       - name: Download sources
