@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: luci-app-xiaomi-control 20261116-r5\n"
-"PO-Revision-Date: 2026-11-17 00:55+0800\n"
+"Project-Id-Version: luci-app-xiaomi-control 20261116-r6\n"
+"PO-Revision-Date: 2026-11-17 09:40+0800\n"
 "Last-Translator: ViKing <viking.yfy@qq.com>\n"
 "Language-Team: Simplified Chinese\n"
 "Language: zh_Hans\n"
@@ -448,20 +448,8 @@ msgstr "双频"
 msgid "After switching: the 5G 4x4 radio is split into two independent 2x2 radios (5.2G + 5.8G)."
 msgstr "切换后：5G 4x4 射频将拆分为两个独立的 2x2 射频（5.2G + 5.8G）。"
 
-msgid "New SSID: %s-5.8G (channel 149 / 80 MHz), for a dedicated backhaul or gaming"
-msgstr "新 SSID：%s-5.8G（信道 149 / 80 MHz），用于专用回程或游戏"
-
-msgid "Primary 5G renamed to %s-5.2G (channel 36 / 80 MHz); password and encryption inherited"
-msgstr "主 5G 更名为 %s-5.2G（信道 36 / 80 MHz）；密码和加密方式沿用原设置"
-
-msgid "Single-client peak and coverage drop; multi-client concurrency and dedicated backhaul improve"
-msgstr "单设备峰值速率和覆盖范围下降；多设备并发与专用回程能力提升"
-
 msgid "After switching: restore a single 5G 4x4 radio covering the full band (160 MHz)."
 msgstr "切换后：恢复为覆盖全频段（160 MHz）的单个 5G 4x4 射频。"
-
-msgid "SSID returns to %s-5G; the tri-band config is kept but disabled, never deleted"
-msgstr "SSID 恢复为 %s-5G；三频配置保留但禁用，不会删除"
 
 msgid "Single-client peak and coverage restored"
 msgstr "单设备峰值速率和覆盖范围恢复"
@@ -495,3 +483,18 @@ msgstr "正在等待设备重新上线..."
 
 msgid "Switching reboots the router. Save your work first."
 msgstr "切换将重启路由器，请先保存好当前工作。"
+
+msgid "A new 5.8G SSID is added (channel 149 / 80 MHz), while your existing 2.4G and 5G names stay unchanged."
+msgstr "将新增一个 5.8G 名称（信道 149 / 80 MHz），你现有的 2.4G 和 5G 名称保持不变。"
+
+msgid "Password and encryption of the new 5.8G are inherited from the primary 5G."
+msgstr "新增 5.8G 的密码和加密方式沿用自主 5G。"
+
+msgid "Single-client peak and coverage drop; multi-client concurrency and a dedicated backhaul improve."
+msgstr "单设备峰值速率和覆盖范围下降；多设备并发与专用回程能力提升。"
+
+msgid "The 5.8G entry is removed from the wireless page; all your SSIDs stay unchanged."
+msgstr "5.8G 条目将从无线页面移除；你的所有名称保持不变。"
+
+msgid "The 5.8G name is remembered, so it returns when you switch back to tri-band."
+msgstr "5.8G 名称会被记住，切回三频时会恢复。"

@@ -62,17 +62,17 @@ prepare_modules() {
 }
 
 # Derive a stable SSID base from the current primary 5 GHz SSID.
+# Derive the SSID base from the current primary 5 GHz SSID every time, so the
+# value always matches the device's actual naming (including the model code
+# added by router-tool) and stays correct after the user renames the AP.
+# Never cache it: a stale cached base is what made the UI preview disagree
+# with the real SSID. Boards with no model code simply yield the vendor base.
 ssid_base() {
-	local b
-	b=$(uci -q get "$CFG.settings.ssid_base")
-	if [ -z "$b" ]; then
-		b=$(find_primary_5g_iface)
-		b=$(uci -q get "wireless.$b.ssid")
-		b=${b%-5G}; b=${b%-5.2G}; b=${b%-5.8G}; b=${b%_High}
-		[ -n "$b" ] || b=OWRT-Xiaomi
-		uci -q set "$CFG.settings.ssid_base=$b"
-		uci -q commit "$CFG"
-	fi
+	local b i
+	i=$(find_primary_5g_iface) || i=''
+	b=$(uci -q get "wireless.$i.ssid" 2>/dev/null)
+	b=${b%-5G}; b=${b%-5.2G}; b=${b%-5.8G}; b=${b%_High}
+	[ -n "$b" ] || b=OWRT-Xiaomi
 	printf '%s' "$b"
 }
 
@@ -98,8 +98,17 @@ find_primary_5g_iface() {
 	return 1
 }
 
+# Remember the user's current 5.8G SSID before the section is removed, so a
+# later switch back to tri-band restores the name the user actually set.
+remember_5g8() {
+	local s
+	s=$(uci -q get wireless.default_radio2.ssid)
+	[ -n "$s" ] || return 0
+	uci -q set "$CFG.settings.ssid_5g8=$s"
+}
+
 prepare_wireless() {
-	local mode r i base o v applied
+	local mode r i base o v applied name
 	board_ok || return 0
 	mode=$(get_mode)
 	applied=$(uci -q get "$CFG.settings.applied")
@@ -112,14 +121,21 @@ prepare_wireless() {
 		return 0
 	}
 
-	# Idempotent: do not rewrite user wireless settings on every boot.
+	# Nothing changed since the last applied mode. This is based on the mode
+	# transition (not on radio2 being disabled), so switching back to single
+	# is never skipped and the stale radio2 section is always cleaned up.
 	[ "$applied" = "$mode" ] && return 0
 
 	r=$(find_primary_5g_radio) || return 1
 	i=$(find_primary_5g_iface) || return 1
-	base=$(ssid_base)
 
 	if [ "$mode" = dual ]; then
+		base=$(ssid_base)
+		name=$(uci -q get "$CFG.settings.ssid_5g8")
+		[ -n "$name" ] || name="${base}-5.8G"
+
+		# Create the second 5 GHz device/AP only when absent. Once created,
+		# never rewrite its SSID: the user may have renamed it.
 		[ -n "$(uci -q get wireless.radio2)" ] || {
 			uci -q set wireless.radio2=wifi-device
 			uci -q set "wireless.radio2.type=mac80211"
@@ -139,20 +155,22 @@ prepare_wireless() {
 				[ -z "$v" ] || uci -q set "wireless.default_radio2.$o=$v"
 			done
 			uci -q set wireless.default_radio2.device=radio2
-			uci -q set "wireless.default_radio2.ssid=${base}-5.8G"
+			uci -q set "wireless.default_radio2.ssid=$name"
 		}
 		uci -q set wireless.radio2.disabled=0
-		uci -q set "wireless.default_radio2.ssid=${base}-5.8G"
-		uci -q set "wireless.default_radio2.disabled=0"
+		uci -q set wireless.default_radio2.disabled=0
 		uci -q set "wireless.$r.radio=0"
 		uci -q set "wireless.$r.channel=36"
 		uci -q set "wireless.$r.htmode=EHT80"
-		uci -q set "wireless.$i.ssid=${base}-5.2G"
+		# 2.4G and the primary 5G SSID are user-owned: never touch them.
 	else
-		[ -z "$(uci -q get wireless.radio2)" ] || uci -q set wireless.radio2.disabled=1
-		[ -z "$(uci -q get wireless.default_radio2)" ] || uci -q set wireless.default_radio2.disabled=1
+		# Back to dual-band: save the 5.8G name, then remove radio2 entirely
+		# so it disappears from LuCI instead of showing an "unassociated" AP.
+		remember_5g8
+		uci -q delete wireless.radio2
+		uci -q delete wireless.default_radio2
 		uci -q delete "wireless.$r.radio"
-		uci -q set "wireless.$i.ssid=${base}-5G"
+		# Restore the primary 5G to full-band width but keep its SSID.
 	fi
 	uci -q commit wireless
 	uci -q set "$CFG.settings.applied=$mode"
@@ -167,11 +185,19 @@ json_fail() {
 }
 
 status() {
-	local available=0 cur sel base
+	local available=0 cur sel base s24 s52 s58
 	board_ok && available=1
 	cur=$(current_mode)
 	sel=$(get_mode)
 	base=$(ssid_base 2>/dev/null)
+	# Build the preview from the SSIDs actually configured on the device, so
+	# custom names are shown instead of a synthetic base-derived guess.
+	s24=$(uci -q get wireless.default_radio0.ssid)
+	s52=$(uci -q get wireless.default_radio1.ssid)
+	s58=$(uci -q get "$CFG.settings.ssid_5g8")
+	[ -n "$s58" ] || s58="${base}-5.8G"
+	[ -n "$s24" ] || s24="${base}-2.4G"
+	[ -n "$s52" ] || s52="${base}-5.2G"
 	json_init
 	json_add_boolean available "$available"
 	json_add_string current "$cur"
@@ -179,9 +205,9 @@ status() {
 	[ "$cur" = "$sel" ] && json_add_boolean pending 0 || json_add_boolean pending 1
 	json_add_string ssid_base "$base"
 	if [ "$sel" = dual ]; then
-		json_add_string ssid_preview "${base}-2.4G / ${base}-5.2G / ${base}-5.8G"
+		json_add_string ssid_preview "${s24} / ${s52} / ${s58}"
 	else
-		json_add_string ssid_preview "${base}-2.4G / ${base}-5G"
+		json_add_string ssid_preview "${s24} / ${s52}"
 	fi
 	json_dump
 }

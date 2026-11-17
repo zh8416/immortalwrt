@@ -436,19 +436,7 @@ msgstr ""
 msgid "After switching: the 5G 4x4 radio is split into two independent 2x2 radios (5.2G + 5.8G)."
 msgstr ""
 
-msgid "New SSID: %s-5.8G (channel 149 / 80 MHz), for a dedicated backhaul or gaming"
-msgstr ""
-
-msgid "Primary 5G renamed to %s-5.2G (channel 36 / 80 MHz); password and encryption inherited"
-msgstr ""
-
-msgid "Single-client peak and coverage drop; multi-client concurrency and dedicated backhaul improve"
-msgstr ""
-
 msgid "After switching: restore a single 5G 4x4 radio covering the full band (160 MHz)."
-msgstr ""
-
-msgid "SSID returns to %s-5G; the tri-band config is kept but disabled, never deleted"
 msgstr ""
 
 msgid "Single-client peak and coverage restored"
@@ -482,4 +470,19 @@ msgid "Waiting for the device to come back..."
 msgstr ""
 
 msgid "Switching reboots the router. Save your work first."
+msgstr ""
+
+msgid "A new 5.8G SSID is added (channel 149 / 80 MHz), while your existing 2.4G and 5G names stay unchanged."
+msgstr ""
+
+msgid "Password and encryption of the new 5.8G are inherited from the primary 5G."
+msgstr ""
+
+msgid "Single-client peak and coverage drop; multi-client concurrency and a dedicated backhaul improve."
+msgstr ""
+
+msgid "The 5.8G entry is removed from the wireless page; all your SSIDs stay unchanged."
+msgstr ""
+
+msgid "The 5.8G name is remembered, so it returns when you switch back to tri-band."
 msgstr ""

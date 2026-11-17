@@ -536,14 +536,13 @@ return view.extend({
 		let dirty = false;
 		const describe = function() {
 			const value = select.value;
-			const base = state.ssid_base || 'OWRT-Xiaomi';
 			if (value === 'dual') {
 				dom.content(description, E('div', {}, [
 					E('p', {}, _('After switching: the 5G 4x4 radio is split into two independent 2x2 radios (5.2G + 5.8G).')),
 					E('ul', {}, [
-						E('li', {}, _('New SSID: %s-5.8G (channel 149 / 80 MHz), for a dedicated backhaul or gaming').format(base)),
-						E('li', {}, _('Primary 5G renamed to %s-5.2G (channel 36 / 80 MHz); password and encryption inherited').format(base)),
-						E('li', {}, _('Single-client peak and coverage drop; multi-client concurrency and dedicated backhaul improve'))
+						E('li', {}, _('A new 5.8G SSID is added (channel 149 / 80 MHz), while your existing 2.4G and 5G names stay unchanged.')),
+						E('li', {}, _('Password and encryption of the new 5.8G are inherited from the primary 5G.')),
+						E('li', {}, _('Single-client peak and coverage drop; multi-client concurrency and a dedicated backhaul improve.'))
 					])
 				]));
 			}
@@ -551,8 +550,8 @@ return view.extend({
 				dom.content(description, E('div', {}, [
 					E('p', {}, _('After switching: restore a single 5G 4x4 radio covering the full band (160 MHz).')),
 					E('ul', {}, [
-						E('li', {}, _('SSID returns to %s-5G; the tri-band config is kept but disabled, never deleted').format(base)),
-						E('li', {}, _('Single-client peak and coverage restored'))
+						E('li', {}, _('The 5.8G entry is removed from the wireless page; all your SSIDs stay unchanged.')),
+						E('li', {}, _('The 5.8G name is remembered, so it returns when you switch back to tri-band.'))
 					])
 				]));
 			}
