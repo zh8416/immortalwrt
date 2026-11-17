@@ -1,4 +1,4 @@
-name: Build ImmortalWrt BE7000 + BE10000 (all-in-one)
+name: Build ImmortalWrt (all-in-one)
 
 # 暂时只提供手动触发；不设 schedule / push / PR 触发器
 on:
@@ -16,11 +16,11 @@ on:
         type: string
 
 permissions:
-  contents: write   # 创建 Release / 上传附件
+  contents: read   # 只上传 artifacts，不创建 Release
 
-# 同一分支串行执行，避免同日两次编译抢同一个 Release 序号
+# 同一分支内串行；与 build-all-new.yml 使用不同并发组，两者可并行运行
 concurrency:
-  group: build-all-${{ github.ref }}
+  group: build-all-old-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -255,62 +255,6 @@ jobs:
           archive: false
           if-no-files-found: error
 
-      - name: Create GitHub Release
-        id: release
-        # 主交付是 Release；只要 7 个附件收集齐，就不因 artifact 上传意外而跳过
-        if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          set -euo pipefail
-          # 北京时间日期 + 当日编译序号，例如 v2026.11.12.02
-          DATE=$(TZ=Asia/Shanghai date +%Y.%m.%d)
-          PREFIX="v${DATE}."
-          gh api --paginate -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/tags?per_page=100" --jq '.[].name' \
-            > tags.txt 2>/dev/null || : > tags.txt
-
-          n=1
-          while :; do
-            TAG="${PREFIX}$(printf '%02d' "$n")"
-            if grep -qxF "$TAG" tags.txt; then n=$((n + 1)); continue; fi
-            if gh release view "$TAG" >/dev/null 2>&1; then n=$((n + 1)); continue; fi
-            break
-          done
-          echo "Release tag: $TAG"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-          {
-            echo "### 双机型固件：BE7000 + BE10000"
-            echo ""
-            echo "- 配置文件：\`${{ github.event.inputs.config_file }}\`（基于 \`10000.config\`，MULTI_PROFILE + PER_DEVICE_ROOTFS）"
-            echo "- 源码：\`${GITHUB_REPOSITORY}\` @ \`${GITHUB_SHA}\`（分支 \`${GITHUB_REF_NAME}\`）"
-            echo "- 编译时间（北京时间）：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
-            echo "- 构建记录：[#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
-            echo ""
-            echo "### 附件（7 个，未打包，逐一下载）"
-            echo ""
-            echo "| 文件 | 大小 |"
-            echo "| --- | --- |"
-            for f in release-assets/*; do
-              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
-            done
-            if [ -s "$BUILD_NOTES" ]; then
-              echo ""
-              echo "---"
-              echo ""
-              cat "$BUILD_NOTES"
-              echo ""
-            fi
-          } > release_notes.md
-
-          # 每个文件都是独立 asset，不打包成 zip
-          gh release create "$TAG" release-assets/* \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --notes-file release_notes.md
-          echo "Release 创建完成：https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
-
       - name: Write Job Summary
         if: always()
         run: |
@@ -319,12 +263,7 @@ jobs:
             echo ""
             echo "- 结果：\`${{ job.status }}\`"
             echo "- 配置文件：\`${{ github.event.inputs.config_file }}\`"
-            TAG="${{ steps.release.outputs.tag }}"
-            if [ -n "$TAG" ]; then
-              echo "- Release：**[$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)**"
-            else
-              echo "- Release：未创建（编译或收集附件阶段失败）"
-            fi
+            echo "- Release：不发布（本工作流只上传 artifacts；Release 由 build-all-new.yml 负责）"
             echo "- Artifacts：[本页底部 7 个独立文件](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
             echo ""
             if [ -d release-assets ]; then
