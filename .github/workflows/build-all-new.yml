@@ -4,6 +4,16 @@ name: Build ImmortalWrt (new)
 on:
   workflow_dispatch:
     inputs:
+      config_file:
+        description: '配置文件（仓库根目录）：all.config=正式全功能，min.config=测试精简'
+        required: true
+        default: 'all.config'
+        type: choice
+        options:
+          - 'all.config'
+          - 'min.config'
+          - '7000.config'
+          - '10000.config'
       device:
         description: '编译机型（三选一）'
         required: true
@@ -73,13 +83,29 @@ jobs:
             python3-setuptools rsync swig unzip zlib1g-dev file wget time
 
       - name: Verify and Prepare config file
+        env:
+          CONFIG_FILE_INPUT: ${{ github.event.inputs.config_file }}
         run: |
-          CONFIG_FILE="all.config"
+          CONFIG_FILE="${CONFIG_FILE_INPUT:-all.config}"
+          case "$CONFIG_FILE" in
+            */*|..*) echo "::error::非法的配置文件名：$CONFIG_FILE"; exit 1 ;;
+          esac
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "::error::配置文件 $CONFIG_FILE 未在仓库根目录找到，终止编译。"
+            echo "当前可用的配置："
+            ls -1 *.config 2>/dev/null || echo "（无）"
             exit 1
           fi
           echo "成功找到配置文件: $CONFIG_FILE"
+          # 多机型（MULTI_PROFILE + PER_DEVICE_ROOTFS）还是单 profile，决定后续机型处理方式
+          if grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' "$CONFIG_FILE"; then
+            MODE=multi
+          else
+            MODE=single
+          fi
+          echo "配置模式：$MODE"
+          echo "CONFIG_FILE=$CONFIG_FILE" >> "$GITHUB_ENV"
+          echo "CONFIG_MODE=$MODE" >> "$GITHUB_ENV"
           cp "$CONFIG_FILE" .config
 
       - name: Select build devices
@@ -92,11 +118,26 @@ jobs:
             '小米BE10000') WANT=xiaomi_be10000 ;;
             *)             WANT='' ;;
           esac
-          if [ -z "$WANT" ]; then
-            echo '全机型：保持 all.config 中的机型选择不变'
+
+          # 单 profile 配置（如 7000.config / 10000.config）机型已写死在 CONFIG_TARGET_PROFILE 里
+          if [ "${CONFIG_MODE:-multi}" = "single" ]; then
+            CUR=$(sed -n 's/^CONFIG_TARGET_PROFILE="DEVICE_\(xiaomi_be[0-9]*\)"$/\1/p' .config | head -n1)
+            if [ -z "$CUR" ]; then
+              echo "::error::单 profile 配置中未解析到机型（CONFIG_TARGET_PROFILE）"; exit 1
+            fi
+            if [ -n "$WANT" ] && [ "$WANT" != "$CUR" ]; then
+              echo "::error::$CONFIG_FILE 固定为 $CUR，与所选机型 $WANT 不一致；请改用 all.config/min.config 或选择对应机型"
+              exit 1
+            fi
+            echo "单 profile 配置：机型固定为 $CUR（$CONFIG_FILE）"
             exit 0
           fi
-          # all.config 已是多机型模式，软件包由各机型 DEVICE_PACKAGES 决定，
+
+          if [ -z "$WANT" ]; then
+            echo "全机型：保持 $CONFIG_FILE 中的机型选择不变"
+            exit 0
+          fi
+          # 多机型模式，软件包由各机型 DEVICE_PACKAGES 决定，
           # 因此这里只需要去掉未选机型的 DEVICE 行。
           awk -v keep="_DEVICE_${WANT}=y" '
             /^CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y$/ {
@@ -121,14 +162,20 @@ jobs:
           echo "CONFIG_CCACHE=y" >> .config
           export FORCE=1
           make defconfig
-          # 多机型与按设备 rootfs 必须保留，否则会被 Kconfig 拍平成单 profile
-          grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' .config || {
-            echo "::error::CONFIG_TARGET_MULTI_PROFILE 未生效，请检查 all.config"; exit 1; }
-          grep -qx 'CONFIG_TARGET_PER_DEVICE_ROOTFS=y' .config || {
-            echo "::error::CONFIG_TARGET_PER_DEVICE_ROOTFS 未生效"; exit 1; }
-          # 机型列表以最终 .config 为准（兼容多机型与单机型两种符号写法）
-          DEVS=$(grep -oE '^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y' .config \
-                 | grep -oE 'xiaomi_be(7000|10000)' | sort -u | tr '\n' ' ')
+          if [ "${CONFIG_MODE:-multi}" = "multi" ]; then
+            # 多机型与按设备 rootfs 必须保留，否则会被 Kconfig 拍平成单 profile
+            grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' .config || {
+              echo "::error::CONFIG_TARGET_MULTI_PROFILE 未生效，请检查 $CONFIG_FILE"; exit 1; }
+            grep -qx 'CONFIG_TARGET_PER_DEVICE_ROOTFS=y' .config || {
+              echo "::error::CONFIG_TARGET_PER_DEVICE_ROOTFS 未生效"; exit 1; }
+            # 机型列表以最终 .config 为准（兼容多机型与单机型两种符号写法）
+            DEVS=$(grep -oE '^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y' .config \
+                   | grep -oE 'xiaomi_be(7000|10000)' | sort -u | tr '\n' ' ')
+          else
+            # 单 profile：机型由 CONFIG_TARGET_PROFILE 决定
+            DEVS=$(sed -n 's/^CONFIG_TARGET_PROFILE="DEVICE_\(xiaomi_be[0-9]*\)"$/\1/p' .config | head -n1)
+            [ -n "$DEVS" ] || { echo "::error::单 profile 配置未解析到机型"; exit 1; }
+          fi
           if [ -z "$DEVS" ]; then
             echo "::error::最终 .config 中没有目标机型，终止编译"; exit 1
           fi
@@ -140,12 +187,17 @@ jobs:
           esac
           echo "DEVLABEL=$LABEL" >> "$GITHUB_ENV"
           echo "编译机型：$LABEL"
-          for dev in $DEVS; do
-            grep -qE "^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_${dev}=y" .config \
-              || { echo "::error::${dev} 未被选中"; exit 1; }
-          done
+          if [ "${CONFIG_MODE:-multi}" = "multi" ]; then
+            for dev in $DEVS; do
+              grep -qE "^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_${dev}=y" .config \
+                || { echo "::error::${dev} 未被选中"; exit 1; }
+            done
+          else
+            grep -qE "^CONFIG_TARGET_PROFILE=\"DEVICE_${DEVS}\"$" .config \
+              || { echo "::error::单 profile 机型校验失败：${DEVS}"; exit 1; }
+          fi
           echo '机型校验通过'
-          grep -E '^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be)' .config
+          grep -E '^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|PROFILE="DEVICE_xiaomi_be|DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be)' .config || true
 
       - name: Apply extra packages
         env:
@@ -314,6 +366,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
+          if [ "${CONFIG_MODE:-multi}" = "multi" ]; then PROFILE_DESC='MULTI_PROFILE + PER_DEVICE_ROOTFS'; else PROFILE_DESC='单 profile'; fi
           # 北京时间日期 + 当日编译序号，例如 v2026.11.12.02
           DATE=$(TZ=Asia/Shanghai date +%Y.%m.%d)
           PREFIX="v${DATE}."
@@ -334,7 +387,7 @@ jobs:
           {
             echo "### 固件：${DEVLABEL}"
             echo ""
-            echo "- 机型选项：\`${{ github.event.inputs.device }}\`（配置源 \`all.config\`，MULTI_PROFILE + PER_DEVICE_ROOTFS）"
+            echo "- 机型选项：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE}\`，${PROFILE_DESC}）"
             echo "- 源码：\`${GITHUB_REPOSITORY}\` @ \`${GITHUB_SHA}\`（分支 \`${GITHUB_REF_NAME}\`）"
             echo "- 编译时间（北京时间）：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
             echo "- 构建记录：[#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
@@ -369,7 +422,7 @@ jobs:
             echo "## 编译（new）· ${{ github.ref_name }}"
             echo ""
             echo "- 结果：\`${{ job.status }}\`"
-            echo "- 机型：\`${{ github.event.inputs.device }}\`（配置源 \`all.config\`）"
+            echo "- 机型：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE:-all.config}\`）"
             TAG="${{ steps.release.outputs.tag }}"
             if [ -n "$TAG" ]; then
               echo "- Release：**[$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)**"
