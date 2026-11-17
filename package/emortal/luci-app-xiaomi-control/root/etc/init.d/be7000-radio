@@ -2,6 +2,6 @@
 
 START=09
 
-boot() {
-	/usr/libexec/be7000-radio boot || logger -t be7000-radio 'failed to prepare 5 GHz radio mode'
+start() {
+	/usr/libexec/be7000-radio boot-early || logger -t be7000-radio 'early preparation failed'
 }

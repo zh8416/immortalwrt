@@ -536,11 +536,14 @@ return view.extend({
 		let dirty = false;
 		const describe = function() {
 			const value = select.value;
+			const s24 = state.ssid_24 || '';
+			const s52 = state.ssid_52 || '';
+			const s58 = state.ssid_58 || '';
 			if (value === 'dual') {
 				dom.content(description, E('div', {}, [
 					E('p', {}, _('After switching: the 5G 4x4 radio is split into two independent 2x2 radios (5.2G + 5.8G).')),
 					E('ul', {}, [
-						E('li', {}, _('A new 5.8G SSID is added (channel 149 / 80 MHz), while your existing 2.4G and 5G names stay unchanged.')),
+						E('li', {}, [ _('A new 5.8G SSID is added (channel 149 / 80 MHz), while your existing 2.4G and 5G names stay unchanged.'), s58 ? ' ' : '', s58 ? E('strong', {}, s58) : '' ]),
 						E('li', {}, _('Password and encryption of the new 5.8G are inherited from the primary 5G.')),
 						E('li', {}, _('Single-client peak and coverage drop; multi-client concurrency and a dedicated backhaul improve.'))
 					])
@@ -555,7 +558,8 @@ return view.extend({
 					])
 				]));
 			}
-			dom.content(preview, _('SSIDs after switch: %s').format(state.ssid_preview || ''));
+			const list = (value === 'dual') ? [ s24, s52, s58 ] : [ s24, s52 ];
+			dom.content(preview, _('SSIDs after switch: %s').format(list.filter(function(x) { return !!x; }).join(' / ')));
 		};
 
 		const refresh = L.bind(function() {
