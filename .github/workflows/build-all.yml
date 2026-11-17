@@ -1,0 +1,345 @@
+name: Build ImmortalWrt BE7000 + BE10000 (all-in-one)
+
+# 暂时只提供手动触发；不设 schedule / push / PR 触发器
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: '配置文件（输入指定config文件名）'
+        required: true
+        default: 'all.config'
+        type: string
+      extra_packages:
+        description: '额外软件包（可选，空格分隔，无效包名或已启用=y的包会自动忽略）'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write   # 创建 Release / 上传附件
+
+# 同一分支串行执行，避免同日两次编译抢同一个 Release 序号
+concurrency:
+  group: build-all-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 4G
+      BUILD_NOTES: .github/build-notes.md
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Cache source downloads (dl/)
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: openwrt-dl-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            openwrt-dl-${{ github.ref_name }}-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: openwrt-ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            openwrt-ccache-${{ github.ref_name }}-
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost /usr/local/lib/node_modules
+          sudo apt-get clean
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget time
+
+      - name: Verify and Prepare config file
+        run: |
+          CONFIG_FILE="${{ github.event.inputs.config_file }}"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::配置文件 '$CONFIG_FILE' 未在仓库根目录找到，终止编译。"
+            exit 1
+          fi
+          echo "成功找到配置文件: $CONFIG_FILE"
+          if [ "$CONFIG_FILE" != ".config" ]; then
+            cp "$CONFIG_FILE" .config
+          fi
+
+      - name: Update feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Prepare build config
+        run: |
+          echo "CONFIG_DEVEL=y" >> .config
+          echo "CONFIG_CCACHE=y" >> .config
+          export FORCE=1
+          make defconfig
+          # 确认多机型与按设备 rootfs 没有被 Kconfig 覆盖回单机型
+          grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' .config || {
+            echo "::error::CONFIG_TARGET_MULTI_PROFILE 未生效，请检查 all.config"; exit 1; }
+          grep -qx 'CONFIG_TARGET_PER_DEVICE_ROOTFS=y' .config || {
+            echo "::error::CONFIG_TARGET_PER_DEVICE_ROOTFS 未生效"; exit 1; }
+          grep -qx 'CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be7000=y' .config || {
+            echo "::error::BE7000 设备未被选中"; exit 1; }
+          grep -qx 'CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be10000=y' .config || {
+            echo "::error::BE10000 设备未被选中"; exit 1; }
+          echo "双机型配置校验通过"
+          grep -E '^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be)' .config
+
+      - name: Apply extra packages
+        env:
+          EXTRA_PACKAGES: ${{ github.event.inputs.extra_packages }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EXTRA_PACKAGES:-}" ]; then
+            echo "未填写额外软件包，跳过。"
+            exit 0
+          fi
+          PKGIDX=tmp/.config-package.in
+          if [ ! -f "$PKGIDX" ]; then
+            echo "::error::包索引 $PKGIDX 不存在，无法校验包名"
+            exit 1
+          fi
+          added=0; skipped=0; invalid=0
+          for pkg in $EXTRA_PACKAGES; do
+            sym="CONFIG_PACKAGE_$pkg"
+            # 1) 已在基底中 =y：忽略
+            if grep -qx "${sym}=y" .config; then
+              echo "跳过 $pkg：config 中已启用 (=y)"
+              skipped=$((skipped+1))
+              continue
+            fi
+            # 2) 校验包名有效性：包索引里必须存在 PACKAGE_<pkg> 符号
+            if ! awk -v want="PACKAGE_$pkg" '$1=="config" && $2==want {f=1} END{exit !f}' "$PKGIDX"; then
+              echo "::warning::忽略 $pkg：不是有效的软件包名"
+              invalid=$((invalid+1))
+              continue
+            fi
+            # 3) 移除该符号的旧行（is not set / =m 等），再追加 =y
+            awk -v s="$sym" '
+              $0==s"=y" || $0=="# "s" is not set" || $0==s"=m" || $0=="# "s"=m" { next }
+              { print }
+            ' .config > .config.new && mv .config.new .config
+            echo "${sym}=y" >> .config
+            echo "添加 $pkg -> ${sym}=y"
+            added=$((added+1))
+          done
+          echo "额外软件包处理完成：新增 $added，跳过(已=y) $skipped，忽略(无效) $invalid"
+          if [ "$added" -gt 0 ]; then
+            export FORCE=1
+            make defconfig
+            echo "--- 已启用包核验 ---"
+            for pkg in $EXTRA_PACKAGES; do
+              grep -qx "CONFIG_PACKAGE_${pkg}=y" .config && echo "  ✓ $pkg" || echo "  ✗ $pkg 未生效(依赖未满足?)"
+            done
+          fi
+
+      - name: Download sources
+        run: make download -j4
+
+      - name: Compile firmware
+        run: |
+          make -j4 || make -j1 V=s
+
+      # 收集 7 个独立附件：config.buildinfo + 两机型各 bin / ubi / itb
+      - name: Collect release assets
+        id: collect
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          # 固件文件名时间戳（北京时间）：全工作流只生成一次，artifacts 与 release 共用
+          STAMP=$(TZ=Asia/Shanghai date +'%Y.%m.%d-%H.%M.%S')
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          echo "固件文件名时间戳: $STAMP"
+          T="bin/targets/qualcommbe/ipq95xx"
+          [ -d "$T" ] || { echo "::error::未找到输出目录 $T"; exit 1; }
+
+          # 第七个附件：构建配置
+          CB=$(find "$T" -maxdepth 1 -type f -name 'config.buildinfo' | head -n1)
+          [ -n "$CB" ] || { echo "::error::缺少 config.buildinfo"; exit 1; }
+          cp "$CB" release-assets/config.buildinfo
+
+          pick() {
+            local dev="$1" hint="$2" ext="$3" f
+            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*${hint}*.${ext}" | head -n1)
+            if [ -z "$f" ]; then
+              f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" | head -n1)
+            fi
+            if [ -z "$f" ]; then
+              echo "::error::缺少 ${dev} 的 .${ext} 产物"; exit 1
+            fi
+            base=$(basename "$f")
+            cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
+          }
+          for dev in xiaomi_be7000 xiaomi_be10000; do
+            pick "$dev" "squashfs-sysupgrade" "bin"
+            pick "$dev" "squashfs-factory"   "ubi"
+            pick "$dev" "initramfs-uImage"   "itb"
+          done
+
+          count=$(find release-assets -maxdepth 1 -type f | wc -l)
+          if [ "$count" -ne 7 ]; then
+            echo "::error::预期 7 个附件，实际 $count 个（可能有同名文件被覆盖）"
+            ls -l release-assets
+            exit 1
+          fi
+          echo "已收集 7 个附件："
+          ls -lh release-assets
+
+      # upload-artifact@v7 限制：archive:false 时一个步骤「只能上传 1 个文件」。
+      # 因此 7 个附件拆成 7 个步骤逐条上传，每个 glob 恰好匹配 1 个文件，
+      # 且 7 个文件名互不相同（archive:false 下 artifact 名 = 文件名）。
+      - name: Upload config.buildinfo
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/config.buildinfo
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE7000 sysupgrade.bin
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be7000-*.bin
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE7000 factory.ubi
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be7000-*.ubi
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE7000 initramfs.itb
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be7000-*.itb
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE10000 sysupgrade.bin
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be10000-*.bin
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE10000 factory.ubi
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be10000-*.ubi
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload BE10000 initramfs.itb
+        uses: actions/upload-artifact@v7
+        with:
+          path: release-assets/*-xiaomi_be10000-*.itb
+          archive: false
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        id: release
+        # 主交付是 Release；只要 7 个附件收集齐，就不因 artifact 上传意外而跳过
+        if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 北京时间日期 + 当日编译序号，例如 v2026.11.12.02
+          DATE=$(TZ=Asia/Shanghai date +%Y.%m.%d)
+          PREFIX="v${DATE}."
+          gh api --paginate -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/tags?per_page=100" --jq '.[].name' \
+            > tags.txt 2>/dev/null || : > tags.txt
+
+          n=1
+          while :; do
+            TAG="${PREFIX}$(printf '%02d' "$n")"
+            if grep -qxF "$TAG" tags.txt; then n=$((n + 1)); continue; fi
+            if gh release view "$TAG" >/dev/null 2>&1; then n=$((n + 1)); continue; fi
+            break
+          done
+          echo "Release tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 双机型固件：BE7000 + BE10000"
+            echo ""
+            echo "- 配置文件：\`${{ github.event.inputs.config_file }}\`（基于 \`10000.config\`，MULTI_PROFILE + PER_DEVICE_ROOTFS）"
+            echo "- 源码：\`${GITHUB_REPOSITORY}\` @ \`${GITHUB_SHA}\`（分支 \`${GITHUB_REF_NAME}\`）"
+            echo "- 编译时间（北京时间）：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
+            echo "- 构建记录：[#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            echo ""
+            echo "### 附件（7 个，未打包，逐一下载）"
+            echo ""
+            echo "| 文件 | 大小 |"
+            echo "| --- | --- |"
+            for f in release-assets/*; do
+              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
+            done
+            if [ -s "$BUILD_NOTES" ]; then
+              echo ""
+              echo "---"
+              echo ""
+              cat "$BUILD_NOTES"
+              echo ""
+            fi
+          } > release_notes.md
+
+          # 每个文件都是独立 asset，不打包成 zip
+          gh release create "$TAG" release-assets/* \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file release_notes.md
+          echo "Release 创建完成：https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+      - name: Write Job Summary
+        if: always()
+        run: |
+          {
+            echo "## 双机型编译 · ${{ github.ref_name }}"
+            echo ""
+            echo "- 结果：\`${{ job.status }}\`"
+            echo "- 配置文件：\`${{ github.event.inputs.config_file }}\`"
+            TAG="${{ steps.release.outputs.tag }}"
+            if [ -n "$TAG" ]; then
+              echo "- Release：**[$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)**"
+            else
+              echo "- Release：未创建（编译或收集附件阶段失败）"
+            fi
+            echo "- Artifacts：[本页底部 7 个独立文件](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
+            echo ""
+            if [ -d release-assets ]; then
+              echo "| 附件 | 大小 |"
+              echo "| --- | --- |"
+              for f in release-assets/*; do
+                [ -f "$f" ] || continue
+                echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
+              done
+            fi
+            if [ -s "$BUILD_NOTES" ]; then
+              echo ""
+              echo "---"
+              echo ""
+              cat "$BUILD_NOTES"
+              echo ""
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

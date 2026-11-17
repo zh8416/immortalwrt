@@ -1,0 +1,52 @@
+name: Test v7 specific paths
+
+on:
+  workflow_dispatch: # 仅手动触发
+
+jobs:
+  test-v7-paths:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. 模拟生成编译输出文件 (带版本号)
+        run: |
+          # 模拟你的固件目录结构
+          mkdir -p bin/targets/qualcommbe/ipq95xx
+          
+          # 模拟生成带版本号和时间戳的固件
+          echo "fake firmware content" > bin/targets/qualcommbe/ipq95xx/immortalwrt-qualcommbe-ipq95xx-factory.bin
+          echo "fake firmware content" > bin/targets/qualcommbe/ipq95xx/immortalwrt-qualcommbe-ipq95xx-sysupgrade.bin
+          
+          # 模拟生成 config 文件
+          echo "CONFIG_TARGET=qualcommbe" > bin/targets/qualcommbe/ipq95xx/config.buildinfo
+
+      # ================= 下面是你要求的测试代码 =================
+
+      # 1. 上传 factory.bin (假设这是你需要的固件)
+      - name: Upload factory bin
+        uses: actions/upload-artifact@v7
+        with:
+          # 注意：这里千万不能写 *.bin，必须精确到某一个具体的文件
+          # 因为你的文件名可能带版本号和日期（例如 immortalwrt-xxx-factory.bin），
+          # 你可以写死，如果每次名字不一样，你可能需要先用 shell 脚本重命名它
+          path: bin/targets/qualcommbe/ipq95xx/immortalwrt-*-factory.bin
+          archive: false
+          if-no-files-found: ignore
+
+      # 2. 上传 sysupgrade.bin
+      - name: Upload sysupgrade bin
+        uses: actions/upload-artifact@v7
+        with:
+          path: bin/targets/qualcommbe/ipq95xx/immortalwrt-*-sysupgrade.bin
+          archive: false
+          if-no-files-found: ignore
+
+      # 3. 上传 config 文件
+      - name: Upload build info
+        uses: actions/upload-artifact@v7
+        with:
+          path: bin/targets/qualcommbe/ipq95xx/*config.buildinfo
+          archive: false
+          if-no-files-found: ignore
+
+      # ==========================================================

@@ -1,0 +1,40 @@
+name: Clean Old Caches
+
+on:
+  workflow_dispatch: # 允许手动点击运行
+  schedule:
+    - cron: '0 18 * * *' # 每天北京时间凌晨 2 点自动运行
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cleanup Caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          echo "当前最新 Commit 哈希: $CURRENT_SHA"
+          # 获取所有缓存的 ID 和对应的 Key
+          caches=$(gh api -H "Accept: application/vnd.github+json" /repos/$REPO/actions/caches --paginate -q '.actions_caches[] | "\(.id) \(.key)"')
+          
+          if [ -z "$caches" ]; then
+            echo "没有找到任何缓存。"
+            exit 0
+          fi
+
+          echo "$caches" | while read -r id key; do
+            # 如果缓存的 key 里面不包含当前最新的 Commit 哈希，说明是旧代码的缓存，直接删
+            if [[ "$key" != *"$CURRENT_SHA"* ]]; then
+              echo "正在删除旧缓存: ID=$id, Key=$key"
+              gh api -X DELETE /repos/$REPO/actions/caches/$id
+            else
+              echo "保留当前最新缓存: $key"
+            fi
+          done

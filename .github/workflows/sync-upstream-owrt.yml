@@ -1,0 +1,36 @@
+name: Sync owrt with upstream
+
+on:
+  schedule:
+    - cron: '27 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-owrt
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Align owrt branch with VIKINGYFY/immortalwrt owrt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          upstream=$(gh api repos/VIKINGYFY/immortalwrt/commits/owrt --jq .sha)
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/owrt" --jq .object.sha)
+          echo "upstream owrt = $upstream"
+          echo "local    owrt = $current"
+          if [ "$upstream" = "$current" ]; then
+            echo "Already in sync, nothing to do."
+            exit 0
+          fi
+          # Target ref is fixed: never push HEAD, never touch other branches.
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/owrt" \
+            -f sha="$upstream" -F force=true > /dev/null
+          echo "owrt updated to $upstream"
