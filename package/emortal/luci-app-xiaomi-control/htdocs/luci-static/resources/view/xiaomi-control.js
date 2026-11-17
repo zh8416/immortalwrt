@@ -533,6 +533,7 @@ return view.extend({
 		]));
 
 		let state = {};
+		let dirty = false;
 		const describe = function() {
 			const value = select.value;
 			const base = state.ssid_base || 'OWRT-Xiaomi';
@@ -573,12 +574,16 @@ return view.extend({
 						.format(modeName(st.current), modeName(st.selected)));
 				else
 					dom.content(this.radioStatus, _('Current: %s').format(modeName(st.current)));
-				select.value = st.selected || 'single';
+				if (!dirty)
+					select.value = st.selected || 'single';
 				describe();
 			}, this));
 		}, this);
 
-		select.addEventListener('change', describe);
+		select.addEventListener('change', function() {
+			dirty = true;
+			describe();
+		});
 		button.addEventListener('click', L.bind(function() {
 			button.disabled = true;
 			message.textContent = _('Saving...');
