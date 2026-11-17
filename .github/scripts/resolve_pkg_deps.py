@@ -20,12 +20,15 @@ import sys
 
 
 def parse_pkginfo(path):
+    """返回 deps[name] = [(条件或None, 包名), ...] / provides / conflicts"""
     deps = {}
     provides = {}
+    conflicts = {}
     for block in open(path, encoding="utf-8", errors="replace").read().split("\n\n"):
         name = None
         d = []
         prov = []
+        conf = []
         for line in block.split("\n"):
             if line.startswith("Package: "):
                 name = line[9:].strip()
@@ -34,19 +37,23 @@ def parse_pkginfo(path):
                     tok = tok.strip().lstrip("+")
                     if not tok:
                         continue
-                    if ":" in tok:            # 形如 IPV6:ip6tables 的条件依赖，取包名
-                        tok = tok.split(":", 1)[1]
+                    cond = None
+                    if ":" in tok:            # 形如 IPV6:ip6tables / LIBCURL_GNUTLS:libgnutls
+                        cond, tok = tok.split(":", 1)
                     tok = re.sub(r"\s*\(.*?\)$", "", tok).strip()
                     if not tok or tok.startswith("@"):   # @(aarch64||...) 之类的架构条件
                         continue
-                    d.append(tok)
+                    d.append((cond, tok))
             elif line.startswith("Provides: "):
-                prov = [p.strip() for p in line[10:].split(",") if p.strip()]
+                prov = [p.strip() for p in re.split(r"[\s,]+", line[10:].strip()) if p.strip()]
+            elif line.startswith("Conflicts: "):
+                conf = [c.strip() for c in line[11:].split() if c.strip()]
         if name:
             deps[name] = d
+            conflicts[name] = conf
             for p in prov:
                 provides.setdefault(p.lstrip("@"), []).append(name)
-    return deps, provides
+    return deps, provides, conflicts
 
 
 def parse_symbols(path):
@@ -59,15 +66,21 @@ def parse_symbols(path):
 
 
 def parse_config(path):
-    """返回 (已=y 的包集合, 行列表)"""
+    """返回 (已=y 的包集合, 行列表, 全部符号值)"""
     enabled = set()
     lines = []
+    values = {}
     for line in open(path, encoding="utf-8", errors="replace"):
         s = line.rstrip("\n")
         lines.append(s)
-        if s.startswith("CONFIG_PACKAGE_") and s.endswith("=y"):
-            enabled.add(s[len("CONFIG_PACKAGE_"):-2])
-    return enabled, lines
+        m = re.match(r"^CONFIG_([A-Za-z0-9_.-]+)=(.*)$", s)
+        if m:
+            values[m.group(1)] = m.group(2)
+            if m.group(1).startswith("PACKAGE_") and m.group(2) == "y":
+                enabled.add(m.group(1)[len("PACKAGE_"):])
+        elif re.match(r"^# CONFIG_[A-Za-z0-9_.-]+ is not set$", s):
+            values[s[len("# CONFIG_"):-len(" is not set")]] = "n"
+    return enabled, lines, values
 
 
 def main():
@@ -84,15 +97,31 @@ def main():
             print("::error::%s 不存在或为空，请先运行 make prepare-tmpinfo" % f)
             return 1
 
-    deps, provides = parse_pkginfo(info)
+    deps, provides, conflicts = parse_pkginfo(info)
     symbols = parse_symbols(symfile)
-    enabled, lines = parse_config(cfg)
+    enabled, lines, values = parse_config(cfg)
 
     def resolve(n):
+        """把虚拟包名解析成具体包；多个提供者时优先选已启用的那个"""
         if n in deps:
             return n
         cand = provides.get(n)
-        return cand[0] if cand else None
+        if not cand:
+            return None
+        for c in cand:
+            if c in enabled:
+                return c
+        return cand[0]
+
+    def cond_ok(cond):
+        """条件依赖：COND:pkg 只在 COND 已启用时生效；支持 !COND"""
+        if not cond:
+            return True
+        neg = cond.startswith("!")
+        key = cond[1:] if neg else cond
+        v = values.get(key, "n")
+        on = v in ("y", "m")
+        return (not on) if neg else on
 
     invalid = []
     roots = []
@@ -115,12 +144,15 @@ def main():
         seen.add(real)
         order.append(real)
         origin[real] = frm
-        for d in deps.get(real, []):
+        for cond, d in deps.get(real, []):
+            if not cond_ok(cond):
+                continue
             r = resolve(d)
             if r and r not in seen:
                 queue.append((r, real))
 
     added, skipped, nostat = 0, 0, []
+    replaced = []
     for name in order:
         if name not in symbols:
             nostat.append(name)          # 纯虚拟包/元包，没有独立 Kconfig 符号
@@ -141,6 +173,25 @@ def main():
         else:
             print("ADD %-42s (依赖 %s)" % (name, origin.get(name, "?")))
 
+    # 冲突处理：新加入的包若与已启用的包互斥，替换掉旧的
+    # 例如 wpad-mesh-openssl（提供 wpad）会取代 wpad-openssl
+    add_set = set(n for n in order if n in symbols)
+    for name in order:
+        if name not in add_set:
+            continue
+        for c in conflicts.get(name, []):
+            cands = [c] + provides.get(c.lstrip("@"), [])
+            for real in cands:
+                if real == name or real in add_set or real not in enabled:
+                    continue
+                sym = "CONFIG_PACKAGE_" + real
+                lines = [l for l in lines if not (
+                    l == sym + "=y" or l == "# " + sym + " is not set" or l == sym + "=m" or l == "# " + sym + "=m")]
+                lines.append("# " + sym + " is not set")
+                enabled.discard(real)
+                replaced.append((real, name))
+                print("REPLACE %-40s -> %s（互斥）" % (real, name))
+
     with open(cfg, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -148,7 +199,7 @@ def main():
         print("::warning::忽略 %s：不是有效的软件包名" % p)
     if nostat:
         print("INFO 以下依赖无独立包符号（虚拟包），已跳过：%s" % ", ".join(sorted(set(nostat))))
-    print("依赖补齐完成：新增 %d，已启用 %d，无效 %d" % (added, skipped, len(invalid)))
+    print("依赖补齐完成：新增 %d，已启用 %d，替换冲突 %d，无效 %d" % (added, skipped, len(replaced), len(invalid)))
     return 0
 
 
