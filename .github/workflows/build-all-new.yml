@@ -416,6 +416,10 @@ jobs:
         if: always()
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          START_TS: ${{ steps.start_time.outputs.start_ts }}
+          INPUT_DEVICE: ${{ github.event.inputs.device }}
+          INPUT_EXTRA_PACKS: ${{ github.event.inputs.extra_packages }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set +e
           if [ -z "${PUSHPLUS_TOKEN:-}" ]; then
@@ -436,7 +440,7 @@ jobs:
           esac
 
           # ---- 计算耗时：优先用 step 记录，否则用 API 的 run started_at ----
-          START_TS="${{ steps.start_time.outputs.start_ts }}"
+          START_TS="${START_TS:-}"
           if [ -z "$START_TS" ]; then
             START_TS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
                         --jq .run_started_at 2>/dev/null | xargs -r date -d 2>/dev/null +%s)
@@ -466,10 +470,10 @@ jobs:
 
           # ---- 触发参数 ----
           CFG="${CONFIG_FILE:-all.config}"
-          DEV="${{ github.event.inputs.device }}"
-          EXTRA="${{ github.event.inputs.extra_packages }}"
+          DEV="${INPUT_DEVICE:-}"
+          EXTRA="${INPUT_EXTRA_PACKS:-}"
           [ -z "$EXTRA" ] && EXTRA="（无）"
-          TAG="${{ steps.release.outputs.tag }}"
+          TAG="${RELEASE_TAG:-}"
 
           # ---- 拼 HTML ----
           ROWS=""
@@ -533,7 +537,7 @@ jobs:
             echo ""
             echo "- 结果：\`${{ job.status }}\`"
             echo "- 机型：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE:-all.config}\`）"
-            TAG="${{ steps.release.outputs.tag }}"
+            TAG="${RELEASE_TAG:-}"
             if [ -n "$TAG" ]; then
               echo "- Release：**[$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)**"
             else
