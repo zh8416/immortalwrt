@@ -423,6 +423,7 @@ jobs:
         if: always()
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
           START_TS: ${{ steps.start_time.outputs.start_ts }}
           INPUT_DEVICE: ${{ github.event.inputs.device }}
           INPUT_EXTRA_PACKS: ${{ github.event.inputs.extra_packages }}
