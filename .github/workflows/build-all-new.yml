@@ -385,6 +385,13 @@ jobs:
             echo "### 固件：${DEVLABEL}"
             echo ""
             echo "- 机型选项：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE}\`，${PROFILE_DESC}）"
+            EXTRA_RAW="${{ github.event.inputs.extra_packages }}"
+            if [ -n "$EXTRA_RAW" ]; then
+              EXTRA_FMT=$(printf '%s' "$EXTRA_RAW" | sed 's/  */\`、\`/g')
+              echo "- 额外软件包：\`${EXTRA_FMT}\`"
+            else
+              echo "- 额外软件包：无"
+            fi
             echo "- 源码：\`${GITHUB_REPOSITORY}\` @ \`${GITHUB_SHA}\`（分支 \`${GITHUB_REF_NAME}\`）"
             echo "- 编译时间（北京时间）：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
             echo "- 构建记录：[#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
@@ -538,6 +545,13 @@ jobs:
             echo ""
             echo "- 结果：\`${{ job.status }}\`"
             echo "- 机型：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE:-all.config}\`）"
+            EXTRA_RAW="${{ github.event.inputs.extra_packages }}"
+            if [ -n "$EXTRA_RAW" ]; then
+              EXTRA_FMT=$(printf '%s' "$EXTRA_RAW" | sed 's/  */\`、\`/g')
+              echo "- 额外软件包：\`${EXTRA_FMT}\`"
+            else
+              echo "- 额外软件包：无"
+            fi
             TAG="${RELEASE_TAG:-}"
             if [ -n "$TAG" ]; then
               echo "- Release：**[$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)**"
