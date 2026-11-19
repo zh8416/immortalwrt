@@ -26,6 +26,7 @@ on:
 
 permissions:
   contents: write   # 创建 Release / 上传附件
+  actions: read     # 读取 job/step 结论，用于失败原因推送
 
 # 同一分支内串行；与 build-all.yml 使用不同并发组，两者可并行运行
 concurrency:
@@ -43,6 +44,10 @@ jobs:
       BUILD_NOTES: .github/build-notes.md
 
     steps:
+      - name: Record start time
+        id: start_time
+        run: echo "start_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout source code
         uses: actions/checkout@v4
 
@@ -406,6 +411,119 @@ jobs:
             --title "$TAG" \
             --notes-file release_notes.md
           echo "Release 创建完成：https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+      - name: PushPlus result notification
+        if: always()
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: |
+          set +e
+          if [ -z "${PUSHPLUS_TOKEN:-}" ]; then
+            echo "::warning::PUSHPLUS_TOKEN 未配置，跳过推送"
+            exit 0
+          fi
+
+          # ---- 基础信息 ----
+          WF_NAME="Build ImmortalWrt (new)"
+          BRANCH="${GITHUB_REF_NAME}"
+          RUN_ID="${GITHUB_RUN_ID}"
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+          case "${JOB_STATUS:-}" in
+            success)   STATUS_TEXT="成功 ✅"; STATUS_COLOR="green" ;;
+            cancelled) STATUS_TEXT="已取消 ⏸"; STATUS_COLOR="#e67e22" ;;
+            failure)   STATUS_TEXT="失败 ❌"; STATUS_COLOR="red" ;;
+            *)         STATUS_TEXT="${JOB_STATUS:-未知}"; STATUS_COLOR="#555" ;;
+          esac
+
+          # ---- 计算耗时：优先用 step 记录，否则用 API 的 run started_at ----
+          START_TS="${{ steps.start_time.outputs.start_ts }}"
+          if [ -z "$START_TS" ]; then
+            START_TS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
+                        --jq .run_started_at 2>/dev/null | xargs -r date -d 2>/dev/null +%s)
+          fi
+          if [ -n "$START_TS" ]; then
+            DUR_SEC=$(( $(date +%s) - START_TS ))
+            [ "$DUR_SEC" -lt 0 ] && DUR_SEC=0
+            DUR=$(printf '%02d:%02d:%02d' $((DUR_SEC/3600)) $(((DUR_SEC%3600)/60)) $((DUR_SEC%60)))
+          else
+            DUR="未知"
+          fi
+
+          # ---- 找失败步骤（GH_TOKEN 由 actions 提供，permissions.actions=read）----
+          FAIL_REASON=""
+          FAILED_STEPS=""
+          if [ "${JOB_STATUS:-}" = "failure" ]; then
+            FAILED_STEPS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+              --jq '[.jobs[].steps[] | select(.conclusion=="failure") | .name] | join("、")' 2>/dev/null)
+            [ -z "$FAILED_STEPS" ] && FAILED_STEPS="未定位到具体步骤（请查看 run 日志）"
+            # 从 build notes 里抽取带 error/失败关键词的行
+            if [ -s "${BUILD_NOTES:-.github/build-notes.md}" ]; then
+              FAIL_REASON=$(grep -iE "error|failed|错误|失败" "${BUILD_NOTES:-.github/build-notes.md}" 2>/dev/null \
+                            | tail -5 | tr '\n' ';' | cut -c1-500)
+            fi
+            [ -z "$FAIL_REASON" ] && FAIL_REASON="请查看 run 日志中失败步骤的输出"
+          fi
+
+          # ---- 触发参数 ----
+          CFG="${CONFIG_FILE:-all.config}"
+          DEV="${{ github.event.inputs.device }}"
+          EXTRA="${{ github.event.inputs.extra_packages }}"
+          [ -z "$EXTRA" ] && EXTRA="（无）"
+          TAG="${{ steps.release.outputs.tag }}"
+
+          # ---- 拼 HTML ----
+          ROWS=""
+          add_row() { ROWS="${ROWS}<tr><td style='padding:6px 12px;border:1px solid #ddd;background:#f7f7f7;white-space:nowrap;'><b>$1</b></td><td style='padding:6px 12px;border:1px solid #ddd;'>$2</td></tr>"; }
+          add_row "工作流" "$(printf '%s' "$WF_NAME" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')"
+          add_row "状态" "<span style='color:${STATUS_COLOR};'><b>${STATUS_TEXT}</b></span>"
+          add_row "用时" "<b>${DUR}</b>"
+          add_row "分支" "<code>${BRANCH}</code>"
+          add_row "配置文件" "<code>${CFG}</code>"
+          add_row "机型" "$(printf '%s' "$DEV" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')"
+          add_row "额外包" "<code>$(printf '%s' "$EXTRA" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' | cut -c1-300)</code>"
+          if [ -n "$TAG" ]; then
+            add_row "Release" "<a href='https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}'>${TAG}</a>"
+          else
+            add_row "Release" "未创建"
+          fi
+          if [ -n "$FAILED_STEPS" ]; then
+            add_row "失败步骤" "<span style='color:red;'>$(printf '%s' "$FAILED_STEPS" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')</span>"
+          fi
+          if [ -n "$FAIL_REASON" ]; then
+            add_row "失败原因" "<span style='color:#c0392b;'>$(printf '%s' "$FAIL_REASON" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')</span>"
+          fi
+          add_row "运行链接" "<a href='${RUN_URL}'>查看完整日志 #${RUN_ID}</a>"
+
+          CONTENT="<h3>${WF_NAME}</h3><table style='border-collapse:collapse;width:100%;'>${ROWS}</table>\
+          <p style='color:#888;font-size:12px;'>由 GitHub Actions 自动推送 · ${BRANCH} · ${GITHUB_SHA:0:7}</p>"
+
+          # ---- 用 python3 生成 JSON，避免转义问题 ----
+          PUSH_TITLE="${STATUS_TEXT%% *} | ${WF_NAME} | ${BRANCH}"
+          PUSH_TITLE=$(printf '%s' "$PUSH_TITLE" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')
+          export PUSH_TITLE CONTENT
+          python3 - <<'PYEOF'
+          import json, os, urllib.request, urllib.error
+          payload = {
+              "token": os.environ["PUSHPLUS_TOKEN"],
+              "title": os.environ["PUSH_TITLE"],
+              "content": os.environ["CONTENT"],
+              "template": "html",
+          }
+          req = urllib.request.Request(
+              "https://www.pushplus.plus/send",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  body = r.read().decode("utf-8", "replace")
+              print("PushPlus 返回:", body)
+              if '"code":200' not in body.replace(" ", ""):
+                  print("::warning::PushPlus 返回非 200，推送可能失败")
+          except Exception as e:
+              print("::warning::PushPlus 推送异常: %s" % e)
+          PYEOF
 
       - name: Write Job Summary
         if: always()
