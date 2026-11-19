@@ -442,8 +442,9 @@ jobs:
           # ---- 计算耗时：优先用 step 记录，否则用 API 的 run started_at ----
           START_TS="${START_TS:-}"
           if [ -z "$START_TS" ]; then
-            START_TS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
-                        --jq .run_started_at 2>/dev/null | xargs -r date -d 2>/dev/null +%s)
+            RS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
+                  --jq .run_started_at 2>/dev/null)
+            [ -n "$RS" ] && START_TS=$(date -d "$RS" +%s 2>/dev/null)
           fi
           if [ -n "$START_TS" ]; then
             DUR_SEC=$(( $(date +%s) - START_TS ))
