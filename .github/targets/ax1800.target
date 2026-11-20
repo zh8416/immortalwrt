@@ -1,0 +1,132 @@
+# CONFIG_TARGET_airoha is not set
+# CONFIG_TARGET_d1 is not set
+# CONFIG_TARGET_sunxi is not set
+# CONFIG_TARGET_apm821xx is not set
+# CONFIG_TARGET_armsr is not set
+# CONFIG_TARGET_ath79 is not set
+# CONFIG_TARGET_bcm27xx is not set
+# CONFIG_TARGET_bcm53xx is not set
+# CONFIG_TARGET_bcm47xx is not set
+# CONFIG_TARGET_bcm4908 is not set
+# CONFIG_TARGET_bmips is not set
+# CONFIG_TARGET_octeon is not set
+# CONFIG_TARGET_gemini is not set
+# CONFIG_TARGET_econet is not set
+# CONFIG_TARGET_mpc85xx is not set
+# CONFIG_TARGET_mxs is not set
+# CONFIG_TARGET_ixp4xx is not set
+# CONFIG_TARGET_lantiq is not set
+# CONFIG_TARGET_loongarch64 is not set
+# CONFIG_TARGET_malta is not set
+# CONFIG_TARGET_pistachio is not set
+# CONFIG_TARGET_mvebu is not set
+# CONFIG_TARGET_kirkwood is not set
+# CONFIG_TARGET_mediatek is not set
+# CONFIG_TARGET_ramips is not set
+# CONFIG_TARGET_at91 is not set
+# CONFIG_TARGET_microchipsw is not set
+# CONFIG_TARGET_tegra is not set
+# CONFIG_TARGET_layerscape is not set
+# CONFIG_TARGET_qoriq is not set
+# CONFIG_TARGET_imx is not set
+CONFIG_TARGET_qualcommax=y
+# CONFIG_TARGET_qualcommbe is not set
+# CONFIG_TARGET_ipq40xx is not set
+# CONFIG_TARGET_ipq806x is not set
+# CONFIG_TARGET_realtek is not set
+# CONFIG_TARGET_rockchip is not set
+# CONFIG_TARGET_stm32 is not set
+# CONFIG_TARGET_sifiveu is not set
+# CONFIG_TARGET_siflower is not set
+# CONFIG_TARGET_starfive is not set
+# CONFIG_TARGET_omap is not set
+# CONFIG_TARGET_uml is not set
+# CONFIG_TARGET_zynq is not set
+# CONFIG_TARGET_x86 is not set
+# CONFIG_TARGET_qualcommax_ipq807x is not set
+CONFIG_TARGET_qualcommax_ipq60xx=y
+# CONFIG_TARGET_qualcommax_ipq50xx is not set
+# CONFIG_TARGET_MULTI_PROFILE is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_alfa-network_ap120c-ax is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_cambiumnetworks_xe3-4 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_glinet_gl-ax1800 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_glinet_gl-axt1800 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-02 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-07 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-ss-01 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_link_nn6000-v1 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_link_nn6000-v2 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_linksys_mr7350 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_linksys_mr7500 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_mikrotik_chateau-5g-r17-ax is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_netgear_rbr350 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_netgear_rbs350 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_netgear_wax214 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_netgear_wax610 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_netgear_wax610y is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_tplink_eap610-outdoor is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_tplink_eap623-outdoor-hd-v1 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_tplink_eap625-outdoor-hd-v1 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_tplink_eap620-hd-v2 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_tplink_eap620-hd-v3 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_wallys_dr6018s is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_yuncore_fap650 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_anysafe_e1 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_cmiot_ax18 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_dptech_ap3000-2c is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_redmi_ax5 is not set
+CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_xiaomi_ax1800=y
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_zn_m2 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_philips_ly1800 is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_redmi_ax5-jdcloud is not set
+# CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_sy_y6010 is not set
+CONFIG_TARGET_BOARD="qualcommax"
+CONFIG_TARGET_SUBTARGET="ipq60xx"
+CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax1800"
+CONFIG_TARGET_ARCH_PACKAGES="aarch64_cortex-a53"
+CONFIG_TARGET_ROOTFS_INITRAMFS=y
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_NONE is not set
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_GZIP is not set
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_BZIP2 is not set
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_LZMA is not set
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_LZO is not set
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_LZ4 is not set
+# CONFIG_TARGET_INITRAMFS_COMPRESSION_XZ is not set
+CONFIG_TARGET_INITRAMFS_COMPRESSION_ZSTD=y
+# CONFIG_TARGET_INITRAMFS_FORCE is not set
+# CONFIG_TARGET_ROOTFS_CPIOGZ is not set
+# CONFIG_TARGET_ROOTFS_TARGZ is not set
+# CONFIG_TARGET_ROOTFS_EROFS is not set
+# CONFIG_TARGET_ROOTFS_EXT4FS is not set
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+CONFIG_TARGET_SQUASHFS_BLOCK_SIZE=256
+CONFIG_TARGET_SQUASHFS_BLOCK_READERS=4
+CONFIG_TARGET_SQUASHFS_SMALL_READERS=4
+CONFIG_TARGET_UBIFS_FREE_SPACE_FIXUP=y
+CONFIG_TARGET_UBIFS_JOURNAL_SIZE=""
+# CONFIG_TARGET_ROOTFS_PERSIST_VAR is not set
+CONFIG_TARGET_ROOTFS_DIR=""
+CONFIG_TARGET_OPTIMIZATION="-Os -pipe -mcpu=cortex-a53"
+CONFIG_TARGET_SUFFIX="musl"
+# CONFIG_TARGET_DEFAULT_LAN_IP_FROM_PREINIT is not set
+CONFIG_TARGET_PREINIT_SUPPRESS_STDERR=y
+# CONFIG_TARGET_PREINIT_DISABLE_FAILSAFE is not set
+CONFIG_TARGET_PREINIT_TIMEOUT=4
+# CONFIG_TARGET_PREINIT_SHOW_NETMSG is not set
+# CONFIG_TARGET_PREINIT_SUPPRESS_FAILSAFE_NETMSG is not set
+CONFIG_TARGET_PREINIT_IFNAME=""
+CONFIG_TARGET_PREINIT_IP="192.168.1.1"
+CONFIG_TARGET_PREINIT_NETMASK="255.255.255.0"
+CONFIG_TARGET_PREINIT_BROADCAST="192.168.1.255"
+CONFIG_TARGET_INIT_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+CONFIG_TARGET_INIT_ENV=""
+CONFIG_TARGET_INIT_CMD="/sbin/init"
+CONFIG_TARGET_INIT_SUPPRESS_STDERR=y
+# CONFIG_TARGET_BUTTON_CUSTOMIZATION is not set
+# CONFIG_TARGET_BUTTON_CUSTOMIZATION_FAILSAFE_DISABLED is not set
+# CONFIG_TARGET_BUTTON_CUSTOMIZATION_POWER_DISABLED is not set
+# CONFIG_TARGET_BUTTON_CUSTOMIZATION_REBOOT_DISABLED is not set
+# CONFIG_TARGET_BUTTON_CUSTOMIZATION_RESET_DISABLED is not set
+# CONFIG_TARGET_BUTTON_CUSTOMIZATION_RF_KILL_DISABLED is not set
