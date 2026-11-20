@@ -20,12 +20,17 @@ on:
         default: false
         type: boolean
       ax1800:
-        description: '编译小米 AX1800（与 BE 组合时自动分 job）'
+        description: '编译小米 AX1800（ipq60xx，与 BE 组合时自动分 job）'
+        required: false
+        default: false
+        type: boolean
+      ax3600:
+        description: '编译小米 AX3600（ipq807x 大分区版，自动分 job）'
         required: false
         default: false
         type: boolean
       all_devices:
-        description: '全选（勾选后忽略上面三个机型开关）'
+        description: '全选（勾选后忽略上面四个机型开关）'
         required: false
         default: false
         type: boolean
@@ -85,35 +90,36 @@ jobs:
           BE7000: ${{ github.event.inputs.be7000 }}
           BE10000: ${{ github.event.inputs.be10000 }}
           AX1800: ${{ github.event.inputs.ax1800 }}
+          AX3600: ${{ github.event.inputs.ax3600 }}
           ALL_DEV: ${{ github.event.inputs.all_devices }}
         run: |
           python3 - <<'PYEOF' > matrix.json
           import json, os
-          b7 = os.getenv("BE7000") == "true"
-          b10 = os.getenv("BE10000") == "true"
-          ax = os.getenv("AX1800") == "true"
+          # 机型 -> (分组key, board, subtarget, 显示名)
+          DEVICES = {
+              "BE7000":  ("be",     "qualcommbe", "ipq95xx", "BE7000"),
+              "BE10000": ("be",     "qualcommbe", "ipq95xx", "BE10000"),
+              "AX1800":  ("ax",     "qualcommax", "ipq60xx", "AX1800"),
+              "AX3600":  ("ax3600", "qualcommax", "ipq807x", "AX3600"),
+          }
           all_ = os.getenv("ALL_DEV") == "true"
-          if all_:
-              b7 = b10 = ax = True
-          devs = []
-          if b7: devs.append(("be", "xiaomi_be7000"))
-          if b10: devs.append(("be", "xiaomi_be10000"))
-          if ax: devs.append(("ax", "xiaomi_ax1800"))
-          if not devs:
+          picked = [name for name in DEVICES if all_ or os.getenv(name) == "true"]
+          if not picked:
               raise SystemExit("ERROR: 未勾选任何机型")
           groups = {}
-          for t, d in devs:
-              groups.setdefault(t, []).append(d)
+          for name in picked:
+              key, board, subtarget, label = DEVICES[name]
+              groups.setdefault(key, {"board": board, "subtarget": subtarget, "devs": [], "labels": []})
+              groups[key]["devs"].append("xiaomi_" + name.lower())
+              groups[key]["labels"].append(label)
           inc = []
-          for t, ds in groups.items():
+          for key, g in groups.items():
               inc.append({
-                  "target": t,
-                  "board": "qualcommbe" if t == "be" else "qualcommax",
-                  "subtarget": "ipq95xx" if t == "be" else "ipq60xx",
-                  "devices": " ".join(ds),
-                  "label": "BE7000+BE10000" if (t == "be" and len(ds) == 2)
-                           else ("BE7000" if ds[0].endswith("be7000") else "BE10000") if t == "be"
-                           else "AX1800",
+                  "target": key,
+                  "board": g["board"],
+                  "subtarget": g["subtarget"],
+                  "devices": " ".join(g["devs"]),
+                  "label": "+".join(g["labels"]),
               })
           print(json.dumps({"include": inc}, ensure_ascii=False))
           PYEOF
@@ -184,9 +190,12 @@ jobs:
           echo "配置源: $CONFIG_FILE | target: $TARGET | 机型: $DEVICES"
           cp "$CONFIG_FILE" .config
 
-          if [ "$TARGET" = "ax" ]; then
-            # AX1800：把 config 的 TARGET_* 段替换为 AX 模板，保留公共包清单
-            TPL=".github/targets/ax1800.target"
+          if [ "$TARGET" = "ax" ] || [ "$TARGET" = "ax3600" ]; then
+            # AX 平台：把 config 的 TARGET_* 段替换为对应模板，保留公共包清单
+            case "$TARGET" in
+              ax)     TPL=".github/targets/ax1800.target" ;;
+              ax3600) TPL=".github/targets/ax3600.target" ;;
+            esac
             [ -f "$TPL" ] || { echo "::error::缺少 $TPL"; exit 1; }
             python3 - "$TPL" <<'PYEOF'
           import re, sys
@@ -210,10 +219,17 @@ jobs:
           print('AX target 段已注入（全量替换，%d 行）' % len(ax))
           PYEOF
             # 追加 AX 专属驱动（defconfig 会自动处理依赖）
-            for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
-                     ath11k-firmware-ipq6018-ddwrt ipq-wifi-xiaomi_ax1800 kmod-nss-wifi-drv; do
-              grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
-            done
+            if [ "$TARGET" = "ax" ]; then
+              for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
+                       ath11k-firmware-ipq6018-ddwrt ipq-wifi-xiaomi_ax1800 kmod-nss-wifi-drv; do
+                grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
+              done
+            else
+              # AX3600 = ipq8071 + ATH10K(qca9887) + ipq-wifi
+              for p in kmod-ath10k-smallbuffers ath10k-firmware-qca9887 ipq-wifi-xiaomi_ax3600; do
+                grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
+              done
+            fi
           else
             # BE：config 已是 qualcommbe，只保留勾中的机型（多机型按 DEVICE 行过滤）
             for dev in $DEVICES; do
@@ -234,7 +250,7 @@ jobs:
           fi
 
           echo "--- 目标 target 段 ---"
-          grep -E '^CONFIG_TARGET_(qualcommbe|qualcommax)(_ipq95xx|_ipq60xx)?=y$|^CONFIG_TARGET_PROFILE=|^CONFIG_TARGET_DEVICE_.*DEVICE_xiaomi.*=y$' .config | grep -v 'is not set' | head -10
+          grep -E '^CONFIG_TARGET_(qualcommbe|qualcommax)(_ipq95xx|_ipq60xx|_ipq807x)?=y$|^CONFIG_TARGET_PROFILE=|^CONFIG_TARGET_DEVICE_.*DEVICE_xiaomi.*=y$' .config | grep -v 'is not set' | head -10
 
       - name: Update feeds
         run: |
@@ -253,8 +269,10 @@ jobs:
                 for dev in ${{ matrix.devices }}; do
                   grep -qE "^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_${dev}=y" .config || { echo "::error::${dev} 未选中"; exit 1; }
                 done ;;
-            ax) grep -qx 'CONFIG_TARGET_qualcommax_ipq60xx=y' .config || { echo "::error::AX target 未生效"; exit 1; }
+            ax) grep -qx 'CONFIG_TARGET_qualcommax_ipq60xx=y' .config || { echo "::error::AX1800 target(ipq60xx) 未生效"; exit 1; }
                 grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax1800"' .config || { echo "::error::AX1800 profile 未生效"; exit 1; } ;;
+            ax3600) grep -qx 'CONFIG_TARGET_qualcommax_ipq807x=y' .config || { echo "::error::AX3600 target(ipq807x) 未生效"; exit 1; }
+                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax3600"' .config || { echo "::error::AX3600 profile 未生效"; exit 1; } ;;
           esac
           echo "target 与机型校验通过"
           echo "DEVS=${{ matrix.devices }}" >> "$GITHUB_ENV"
