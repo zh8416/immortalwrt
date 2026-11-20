@@ -239,6 +239,12 @@ jobs:
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
+          # kenzok/jell 版 luci-app-vlmcsd、luci-app-zerotier 把主包的
+          # /etc/config、/etc/init.d 一起打包，与 packages 主包发生 apk 文件覆盖冲突。
+          # 这两个 luci-app 改用官方 luci 版本（与 packages 主包配套）。
+          for p in luci-app-vlmcsd luci-app-zerotier; do
+            rm -rf "feeds/kenzok/other/lean/$p" "feeds/jell/other/lean/$p"
+          done
           ./scripts/feeds install -a
 
       - name: Prepare build config
