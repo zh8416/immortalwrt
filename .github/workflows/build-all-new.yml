@@ -315,17 +315,34 @@ jobs:
           [ -n "$CB" ] || { echo "::error::缺少 config.buildinfo"; exit 1; }
           cp "$CB" "release-assets/config.buildinfo-${{ matrix.target }}-${STAMP}"
           pick() {
+            # 普通变体：排除 *-stock-* 镜像
             local dev="$1" hint="$2" ext="$3" f
-            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*${hint}*.${ext}" | head -n1)
-            [ -z "$f" ] && f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" | head -n1)
+            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*${hint}*.${ext}" ! -name "*-stock-*" | head -n1)
+            [ -z "$f" ] && f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" ! -name "*-stock-*" | head -n1)
             [ -z "$f" ] && { echo "::error::缺少 ${dev} 的 .${ext}"; exit 1; }
+            base=$(basename "$f")
+            cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
+          }
+          pick_stock() {
+            # AX3600 stock 变体（原厂分区布局），同一次编译产出
+            local dev="$1" hint="$2" ext="$3" f
+            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}-stock*${hint}*.${ext}" | head -n1)
+            [ -z "$f" ] && { echo "::warning::缺少 ${dev}-stock 的 .${ext}（跳过）"; return 0; }
             base=$(basename "$f")
             cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
           }
           for dev in ${{ matrix.devices }}; do
             pick "$dev" "squashfs-sysupgrade" "bin"
             pick "$dev" "factory"   "ubi"
-            pick "$dev" "initramfs-uImage" "itb"
+            # AX3600 的 initramfs 产物是 initramfs-factory.ubi，无独立 itb
+            if [ "$dev" != "xiaomi_ax3600" ]; then
+              pick "$dev" "initramfs-uImage" "itb"
+            fi
+            # AX3600 同时收集 stock 变体的 sysupgrade.bin 与 factory.ubi
+            if [ "$dev" = "xiaomi_ax3600" ]; then
+              pick_stock "$dev" "squashfs-sysupgrade" "bin"
+              pick_stock "$dev" "factory" "ubi"
+            fi
           done
           echo "已收集 $(find release-assets -maxdepth 1 -type f | wc -l) 个产物："
           ls -lh release-assets
