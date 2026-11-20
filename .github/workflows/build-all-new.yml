@@ -275,7 +275,8 @@ jobs:
           for pkg in $EXTRA_PACKAGES; do
             if grep -qx "CONFIG_PACKAGE_${pkg}=y" .config; then echo "  ✓ $pkg"; else echo "  ✗ $pkg 未生效"; missing=$((missing+1)); fi
           done
-          [ "$missing" -gt 0 ] && echo "::warning::有 $missing 个额外软件包未生效"
+          if [ "$missing" -gt 0 ]; then echo "::warning::有 $missing 个额外软件包未生效"; fi
+          exit 0
 
       - name: Download sources
         run: make download -j4
