@@ -25,7 +25,7 @@ on:
         default: false
         type: boolean
       ax3600:
-        description: '编译小米 AX3600（ipq807x 大分区版，自动分 job）'
+        description: '编译小米 AX3600（ipq807x stock 原厂分区布局，自动分 job）'
         required: false
         default: false
         type: boolean
@@ -272,7 +272,7 @@ jobs:
             ax) grep -qx 'CONFIG_TARGET_qualcommax_ipq60xx=y' .config || { echo "::error::AX1800 target(ipq60xx) 未生效"; exit 1; }
                 grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax1800"' .config || { echo "::error::AX1800 profile 未生效"; exit 1; } ;;
             ax3600) grep -qx 'CONFIG_TARGET_qualcommax_ipq807x=y' .config || { echo "::error::AX3600 target(ipq807x) 未生效"; exit 1; }
-                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax3600"' .config || { echo "::error::AX3600 profile 未生效"; exit 1; } ;;
+                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax3600-stock"' .config || { echo "::error::AX3600 stock profile 未生效"; exit 1; } ;;
           esac
           echo "target 与机型校验通过"
           echo "DEVS=${{ matrix.devices }}" >> "$GITHUB_ENV"
@@ -315,33 +315,23 @@ jobs:
           [ -n "$CB" ] || { echo "::error::缺少 config.buildinfo"; exit 1; }
           cp "$CB" "release-assets/config.buildinfo-${{ matrix.target }}-${STAMP}"
           pick() {
-            # 普通变体：排除 *-stock-* 镜像
             local dev="$1" hint="$2" ext="$3" f
-            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*${hint}*.${ext}" ! -name "*-stock-*" | head -n1)
-            [ -z "$f" ] && f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" ! -name "*-stock-*" | head -n1)
+            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*${hint}*.${ext}" | head -n1)
+            [ -z "$f" ] && f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" | head -n1)
             [ -z "$f" ] && { echo "::error::缺少 ${dev} 的 .${ext}"; exit 1; }
             base=$(basename "$f")
             cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
           }
-          pick_stock() {
-            # AX3600 stock 变体（原厂分区布局），同一次编译产出
-            local dev="$1" hint="$2" ext="$3" f
-            f=$(find "$T" -maxdepth 1 -type f -name "*${dev}-stock*${hint}*.${ext}" | head -n1)
-            [ -z "$f" ] && { echo "::warning::缺少 ${dev}-stock 的 .${ext}（跳过）"; return 0; }
-            base=$(basename "$f")
-            cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
-          }
           for dev in ${{ matrix.devices }}; do
-            pick "$dev" "squashfs-sysupgrade" "bin"
-            pick "$dev" "factory"   "ubi"
-            # AX3600 的 initramfs 产物是 initramfs-factory.ubi，无独立 itb
-            if [ "$dev" != "xiaomi_ax3600" ]; then
-              pick "$dev" "initramfs-uImage" "itb"
-            fi
-            # AX3600 同时收集 stock 变体的 sysupgrade.bin 与 factory.ubi
+            # AX3600 只编 stock 版（原厂分区布局）：Kconfig 下两个变体互斥
+            # stock 变体无独立 itb（源码 ARTIFACTS 为空），只收 sysupgrade.bin + factory.ubi
             if [ "$dev" = "xiaomi_ax3600" ]; then
-              pick_stock "$dev" "squashfs-sysupgrade" "bin"
-              pick_stock "$dev" "factory" "ubi"
+              pick "xiaomi_ax3600-stock" "squashfs-sysupgrade" "bin"
+              pick "xiaomi_ax3600-stock" "factory" "ubi"
+            else
+              pick "$dev" "squashfs-sysupgrade" "bin"
+              pick "$dev" "factory"   "ubi"
+              pick "$dev" "initramfs-uImage" "itb"
             fi
           done
           echo "已收集 $(find release-assets -maxdepth 1 -type f | wc -l) 个产物："
