@@ -257,6 +257,52 @@ jobs:
           echo "--- 目标 target 段 ---"
           grep -E '^CONFIG_TARGET_(qualcommbe|qualcommax)(_ipq95xx|_ipq60xx|_ipq807x)?=y$|^CONFIG_TARGET_PROFILE=|^CONFIG_TARGET_DEVICE_.*DEVICE_xiaomi.*=y$' .config | grep -v 'is not set' | head -10
 
+          # AX3600-stock 专属：注入 uci-defaults 修复两个 WiFi 问题（BSSID 冲突 + DFS 信道）。
+          # 脚本用 board_name 门控，仅作用于 xiaomi,ax3600-stock；files/ 会在编译时并入 rootfs。
+          if [ "$TARGET" = "ax3600" ]; then
+            mkdir -p files/etc/uci-defaults
+            cat > files/etc/uci-defaults/99-ax3600-stock-wifi <<'WIFIEOF'
+          #!/bin/sh
+          # AX3600-stock 专用：修复两个 WiFi 问题（首次启动执行一次，之后 uci-defaults 框架自动删除本脚本）
+          #   1) ath10k AIoT(5.8G, radio0) 与 ath11k 主5G(5.2G, radio1) BSSID 冲突 -> 给 AIoT 独立 MAC (base+3)
+          #   2) country=US + auto 让 ACS 选到 DFS 信道(100/120/144)，国内手机搜不到 -> 固定 CN + 合规信道
+          # 用 board_name 门控，仅作用于 xiaomi,ax3600-stock，其它机型零影响。
+
+          [ "$(board_name 2>/dev/null)" = "xiaomi,ax3600-stock" ] || exit 0
+
+          # 确保 wireless 配置已生成（首次启动时 wifi detect 可能尚未跑）
+          if ! uci -q get wireless.radio0 >/dev/null 2>&1; then
+              /sbin/wifi config >/dev/null 2>&1 || true
+          fi
+
+          # 从 ART(mtd8) 0x0 读 base MAC，派生 +3 给 AIoT（主5G=base+1, 2.4G=base+2），避免 BSSID 撞车
+          base_mac=$(hexdump -s 0 -n 6 -e '6/1 "%02x:"' /dev/mtd8ro 2>/dev/null | sed 's/:$//')
+          case "$base_mac" in
+              *:*) ;;
+              *)   base_mac="8c:de:f9:b2:82:c0" ;;
+          esac
+          prefix=${base_mac%:*}
+          last=${base_mac##*:}
+          aiot_mac=$(printf '%s:%02x' "$prefix" "$((0x$last + 3))")
+
+          uci -q batch <<EOT
+          	set wireless.radio0.country='CN'
+          	set wireless.radio0.channel='149'
+          	set wireless.radio0.htmode='VHT80'
+          	set wireless.radio1.country='CN'
+          	set wireless.radio1.channel='36'
+          	set wireless.radio1.htmode='HE80'
+          	set wireless.radio2.country='CN'
+          	set wireless.default_radio0.macaddr='$aiot_mac'
+          	commit wireless
+          EOT
+
+          exit 0
+          WIFIEOF
+            chmod +x files/etc/uci-defaults/99-ax3600-stock-wifi
+            echo "已注入 AX3600-stock WiFi 修复 uci-defaults"
+          fi
+
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
