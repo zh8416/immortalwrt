@@ -257,22 +257,83 @@ jobs:
           echo "--- 目标 target 段 ---"
           grep -E '^CONFIG_TARGET_(qualcommbe|qualcommax)(_ipq95xx|_ipq60xx|_ipq807x)?=y$|^CONFIG_TARGET_PROFILE=|^CONFIG_TARGET_DEVICE_.*DEVICE_xiaomi.*=y$' .config | grep -v 'is not set' | head -10
 
-          # AX3600-stock 专属：注入 uci-defaults 修复两个 WiFi 问题（BSSID 冲突 + DFS 信道）。
-          # 脚本用 board_name 门控，仅作用于 xiaomi,ax3600-stock；files/ 会在编译时并入 rootfs。
+          # AX3600-stock 专属：预置修正后的 wireless 配置 + 一个只改 MAC 的 uci-defaults。
+          # 预置配置避免了 uci-defaults 执行早于 wifi detect 导致 radio 段被覆盖的时序问题。
+          # wifi config(detect) 不覆盖已有配置，故开机即为合规信道 + CN；files/ 编译时并入 rootfs。
           if [ "$TARGET" = "ax3600" ]; then
+            mkdir -p files/etc/config
+            cat > files/etc/config/wireless <<'WLANEOF'
+          config wifi-device 'radio0'
+          	option type 'mac80211'
+          	option path 'soc@0/20000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0'
+          	option band '5g'
+          	option channel '149'
+          	option htmode 'VHT80'
+          	option country 'CN'
+
+          config wifi-iface 'default_radio0'
+          	option device 'radio0'
+          	option network 'lan'
+          	option mode 'ap'
+          	option ssid 'OWRT-Xiaomi-AX3600-STOCK-5.8G'
+          	option encryption 'psk2+ccmp'
+          	option key '12345678'
+          	option disabled '0'
+
+          config wifi-device 'radio1'
+          	option type 'mac80211'
+          	option path 'platform/soc@0/c000000.wifi'
+          	option band '5g'
+          	option channel '36'
+          	option htmode 'HE80'
+          	option country 'CN'
+
+          config wifi-iface 'default_radio1'
+          	option device 'radio1'
+          	option network 'lan'
+          	option mode 'ap'
+          	option ssid 'OWRT-Xiaomi-AX3600-STOCK-5.2G'
+          	option encryption 'psk2+ccmp'
+          	option key '12345678'
+          	option disabled '0'
+
+          config wifi-device 'radio2'
+          	option type 'mac80211'
+          	option path 'platform/soc@0/c000000.wifi+1'
+          	option band '2g'
+          	option channel 'auto'
+          	option htmode 'HE20'
+          	option country 'CN'
+
+          config wifi-iface 'default_radio2'
+          	option device 'radio2'
+          	option network 'lan'
+          	option mode 'ap'
+          	option ssid 'OWRT-Xiaomi-AX3600-STOCK-2.4G'
+          	option encryption 'psk2+ccmp'
+          	option key '12345678'
+          	option disabled '0'
+          WLANEOF
             mkdir -p files/etc/uci-defaults
-            cat > files/etc/uci-defaults/99-ax3600-stock-wifi <<'WIFIEOF'
+            cat > files/etc/uci-defaults/99-ax3600-stock-mac <<'WIFIEOF'
           #!/bin/sh
-          # AX3600-stock 专用：修复两个 WiFi 问题（首次启动执行一次，之后 uci-defaults 框架自动删除本脚本）
-          #   1) ath10k AIoT(5.8G, radio0) 与 ath11k 主5G(5.2G, radio1) BSSID 冲突 -> 给 AIoT 独立 MAC (base+3)
-          #   2) country=US + auto 让 ACS 选到 DFS 信道(100/120/144)，国内手机搜不到 -> 固定 CN + 合规信道
-          # 用 board_name 门控，仅作用于 xiaomi,ax3600-stock，其它机型零影响。
-
+          # AX3600-stock：仅给 AIoT(radio0) 独立 MAC（base+3），避开与主5G 的 BSSID 冲突。
+          # channel/country 已由预置的 /etc/config/wireless 固定，无需在此处理。
           [ "$(board_name 2>/dev/null)" = "xiaomi,ax3600-stock" ] || exit 0
-
-          # 确保 wireless 配置已生成（首次启动时 wifi detect 可能尚未跑）
-          if ! uci -q get wireless.radio0 >/dev/null 2>&1; then
-              /sbin/wifi config >/dev/null 2>&1 || true
+          base_mac=$(hexdump -s 0 -n 6 -e '6/1 "%02x:"' /dev/mtd8ro 2>/dev/null | sed 's/:$//')
+          case "$base_mac" in
+              *:*) ;;
+              *)   base_mac="8c:de:f9:b2:82:c0" ;;
+          esac
+          prefix=${base_mac%:*}
+          last=${base_mac##*:}
+          aiot_mac=$(printf '%s:%02x' "$prefix" "$((0x$last + 3))")
+          uci -q set wireless.default_radio0.macaddr="$aiot_mac"
+          uci -q commit wireless
+          exit 0
+          WIFIEOF
+            chmod +x files/etc/uci-defaults/99-ax3600-stock-mac
+            echo "已注入 AX3600-stock 预置 wireless 配置 + MAC 修复"
           fi
 
           # 从 ART(mtd8) 0x0 读 base MAC，派生 +3 给 AIoT（主5G=base+1, 2.4G=base+2），避免 BSSID 撞车
