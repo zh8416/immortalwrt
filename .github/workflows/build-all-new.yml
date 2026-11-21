@@ -225,8 +225,13 @@ jobs:
                 grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
               done
             else
-              # AX3600 = ipq8071 + ATH10K(qca9887) + ipq-wifi
-              for p in kmod-ath10k-smallbuffers ath10k-firmware-qca9887 ipq-wifi-xiaomi_ax3600; do
+              # AX3600 = ipq8071 + ATH11K(2.4G/5G 主射频) + ATH10K(AIoT) + ipq-wifi
+              # all.config 基底把这些包都写成 not set，必须显式打开，否则主射频无驱动/固件
+              for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
+                       ath11k-firmware-ipq8074-ddwrt \
+                       kmod-ath10k ath10k-firmware-qca9887 ipq-wifi-xiaomi_ax3600 \
+                       kmod-nss-wifi-drv; do
+                sed -i "s|^# CONFIG_PACKAGE_${p} is not set$|CONFIG_PACKAGE_${p}=y|" .config
                 grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
               done
             fi
