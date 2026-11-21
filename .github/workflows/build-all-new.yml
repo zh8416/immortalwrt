@@ -336,34 +336,6 @@ jobs:
             echo "已注入 AX3600-stock 预置 wireless 配置 + MAC 修复"
           fi
 
-          # 从 ART(mtd8) 0x0 读 base MAC，派生 +3 给 AIoT（主5G=base+1, 2.4G=base+2），避免 BSSID 撞车
-          base_mac=$(hexdump -s 0 -n 6 -e '6/1 "%02x:"' /dev/mtd8ro 2>/dev/null | sed 's/:$//')
-          case "$base_mac" in
-              *:*) ;;
-              *)   base_mac="8c:de:f9:b2:82:c0" ;;
-          esac
-          prefix=${base_mac%:*}
-          last=${base_mac##*:}
-          aiot_mac=$(printf '%s:%02x' "$prefix" "$((0x$last + 3))")
-
-          uci -q batch <<EOT
-          	set wireless.radio0.country='CN'
-          	set wireless.radio0.channel='149'
-          	set wireless.radio0.htmode='VHT80'
-          	set wireless.radio1.country='CN'
-          	set wireless.radio1.channel='36'
-          	set wireless.radio1.htmode='HE80'
-          	set wireless.radio2.country='CN'
-          	set wireless.default_radio0.macaddr='$aiot_mac'
-          	commit wireless
-          EOT
-
-          exit 0
-          WIFIEOF
-            chmod +x files/etc/uci-defaults/99-ax3600-stock-wifi
-            echo "已注入 AX3600-stock WiFi 修复 uci-defaults"
-          fi
-
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
