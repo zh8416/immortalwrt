@@ -339,7 +339,12 @@ jobs:
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
+          # honk / luci-app-honk 强制取 openwrt-honk feed（kenzok/jell 的同名副本缺 files/update.sh）
+          ./scripts/feeds install -a -p honk
           ./scripts/feeds install -a
+          echo "--- honk 来源确认 ---"
+          readlink -f package/feeds/honk/honk 2>/dev/null || true
+          readlink -f package/feeds/honk/luci-app-honk 2>/dev/null || true
 
       - name: Prepare build config
         run: |
