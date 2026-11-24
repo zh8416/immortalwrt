@@ -1,6 +1,6 @@
 name: Build ImmortalWrt (new)
 
-# 暂时只提供手动触发；不设 schedule / push / PR 触发器
+# 手动触发；机型用 boolean 勾选（可多选），config_file 保持文本框
 on:
   workflow_dispatch:
     inputs:
@@ -9,40 +9,138 @@ on:
         required: true
         default: 'all.config'
         type: string
-      device:
-        description: '编译机型（三选一）'
-        required: true
-        default: '全机型（BE7000 + BE10000）'
-        type: choice
-        options:
-          - '全机型（BE7000 + BE10000）'
-          - '小米BE10000'
-          - '小米BE7000'
+      be7000:
+        description: '编译小米 BE7000'
+        required: false
+        default: false
+        type: boolean
+      be10000:
+        description: '编译小米 BE10000'
+        required: false
+        default: false
+        type: boolean
+      ax1800:
+        description: '编译小米 AX1800（ipq60xx，与 BE 组合时自动分 job）'
+        required: false
+        default: false
+        type: boolean
+      ax3600:
+        description: '编译小米 AX3600（ipq807x stock 原厂分区布局，自动分 job）'
+        required: false
+        default: false
+        type: boolean
+      all_devices:
+        description: '全选（勾选后忽略上面四个机型开关）'
+        required: false
+        default: false
+        type: boolean
       extra_packages:
-        description: '额外软件包（可选，空格分隔，无效包名或已启用=y的包会自动忽略）'
+        description: '额外软件包（可选，空格分隔，自动补齐依赖）'
         required: false
         default: ''
         type: string
 
 permissions:
-  contents: write   # 创建 Release / 上传附件
-  actions: read     # 读取 job/step 结论，用于失败原因推送
+  contents: write
+  actions: read
 
-# 同一分支内串行；与 build-all.yml 使用不同并发组，两者可并行运行
 concurrency:
   group: build-all-new-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  BUILD_NOTES: .github/build-notes.md
+
 jobs:
+  # ---------- 1. 解析机型勾选，按 target 分组输出 matrix ----------
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.group.outputs.matrix }}
+      devices_label: ${{ steps.group.outputs.label }}
+      config_file: ${{ steps.cfg.outputs.config_file }}
+      config_mode: ${{ steps.cfg.outputs.config_mode }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Verify config file
+        id: cfg
+        env:
+          CONFIG_FILE_INPUT: ${{ github.event.inputs.config_file }}
+        run: |
+          RAW="${CONFIG_FILE_INPUT:-all.config}"
+          RAW="${RAW#./}"
+          case "$RAW" in
+            ""|/*|*..*) echo "::error::非法配置文件名：$RAW"; exit 1 ;;
+          esac
+          CONFIG_FILE="$RAW"
+          if [ ! -f "$CONFIG_FILE" ] && [ -f "${CONFIG_FILE}.config" ]; then CONFIG_FILE="${CONFIG_FILE}.config"; fi
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::配置文件 $RAW 未找到"; ls -1 *.config 2>/dev/null || true; exit 1
+          fi
+          grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' "$CONFIG_FILE" && MODE=multi || MODE=single
+          echo "config_file=$CONFIG_FILE mode=$MODE"
+          echo "config_file=$CONFIG_FILE" >> "$GITHUB_OUTPUT"
+          echo "config_mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Group devices by target
+        id: group
+        env:
+          BE7000: ${{ github.event.inputs.be7000 }}
+          BE10000: ${{ github.event.inputs.be10000 }}
+          AX1800: ${{ github.event.inputs.ax1800 }}
+          AX3600: ${{ github.event.inputs.ax3600 }}
+          ALL_DEV: ${{ github.event.inputs.all_devices }}
+        run: |
+          python3 - <<'PYEOF' > matrix.json
+          import json, os
+          # 机型 -> (分组key, board, subtarget, 显示名)
+          DEVICES = {
+              "BE7000":  ("be",     "qualcommbe", "ipq95xx", "BE7000"),
+              "BE10000": ("be",     "qualcommbe", "ipq95xx", "BE10000"),
+              "AX1800":  ("ax",     "qualcommax", "ipq60xx", "AX1800"),
+              "AX3600":  ("ax3600", "qualcommax", "ipq807x", "AX3600"),
+          }
+          all_ = os.getenv("ALL_DEV") == "true"
+          picked = [name for name in DEVICES if all_ or os.getenv(name) == "true"]
+          if not picked:
+              raise SystemExit("ERROR: 未勾选任何机型")
+          groups = {}
+          for name in picked:
+              key, board, subtarget, label = DEVICES[name]
+              groups.setdefault(key, {"board": board, "subtarget": subtarget, "devs": [], "labels": []})
+              groups[key]["devs"].append("xiaomi_" + name.lower())
+              groups[key]["labels"].append(label)
+          inc = []
+          for key, g in groups.items():
+              inc.append({
+                  "target": key,
+                  "board": g["board"],
+                  "subtarget": g["subtarget"],
+                  "devices": " ".join(g["devs"]),
+                  "label": "+".join(g["labels"]),
+              })
+          print(json.dumps({"include": inc}, ensure_ascii=False))
+          PYEOF
+          MATRIX=$(cat matrix.json)
+          echo "matrix=$MATRIX"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          LABEL=$(python3 -c 'import json,sys; m=json.load(open("matrix.json")); print(" + ".join(x["label"] for x in m["include"]))')
+          echo "label=$LABEL" >> "$GITHUB_OUTPUT"
+
+  # ---------- 2. 按 target 并行编译 ----------
   build:
+    needs: resolve
+    if: ${{ needs.resolve.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 4G
-      BUILD_NOTES: .github/build-notes.md
-
     steps:
       - name: Record start time
         id: start_time
@@ -63,9 +161,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: openwrt-ccache-${{ github.ref_name }}-${{ github.sha }}
+          key: openwrt-ccache-${{ matrix.target }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            openwrt-ccache-${{ github.ref_name }}-
+            openwrt-ccache-${{ matrix.target }}-${{ github.ref_name }}-
 
       - name: Free disk space
         run: |
@@ -82,87 +180,171 @@ jobs:
             gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev file wget time
 
-      - name: Verify and Prepare config file
+      - name: Prepare config for target
         env:
-          CONFIG_FILE_INPUT: ${{ github.event.inputs.config_file }}
-        run: |
-          RAW="${CONFIG_FILE_INPUT:-all.config}"
-          RAW="${RAW#./}"
-          # 允许相对子目录，但禁止绝对路径与 .. 跳出仓库
-          case "$RAW" in
-            ""|/*|*..*)
-              echo "::error::非法的配置文件名：$RAW（只填仓库内相对路径）"; exit 1 ;;
-          esac
-          # 省略后缀时自动补 .config
-          CONFIG_FILE="$RAW"
-          if [ ! -f "$CONFIG_FILE" ] && [ -f "${CONFIG_FILE}.config" ]; then
-            CONFIG_FILE="${CONFIG_FILE}.config"
-          fi
-          if [ ! -f "$CONFIG_FILE" ]; then
-            echo "::error::配置文件 $RAW 未找到，终止编译。"
-            echo "仓库根目录可用的配置："
-            ls -1 *.config 2>/dev/null || echo "（无）"
-            exit 1
-          fi
-          echo "成功找到配置文件: $CONFIG_FILE"
-          # 多机型（MULTI_PROFILE + PER_DEVICE_ROOTFS）还是单 profile，决定后续机型处理方式
-          if grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' "$CONFIG_FILE"; then
-            MODE=multi
-          else
-            MODE=single
-          fi
-          echo "配置模式：$MODE"
-          echo "CONFIG_FILE=$CONFIG_FILE" >> "$GITHUB_ENV"
-          echo "CONFIG_MODE=$MODE" >> "$GITHUB_ENV"
-          cp "$CONFIG_FILE" .config
-
-      - name: Select build devices
-        env:
-          DEVICE_INPUT: ${{ github.event.inputs.device }}
+          CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
+          TARGET: ${{ matrix.target }}
+          DEVICES: ${{ matrix.devices }}
         run: |
           set -euo pipefail
-          case "$DEVICE_INPUT" in
-            '小米BE7000')  WANT=xiaomi_be7000 ;;
-            '小米BE10000') WANT=xiaomi_be10000 ;;
-            *)             WANT='' ;;
-          esac
+          echo "配置源: $CONFIG_FILE | target: $TARGET | 机型: $DEVICES"
+          cp "$CONFIG_FILE" .config
 
-          # 单 profile 配置（如 7000.config / 10000.config）机型已写死在 CONFIG_TARGET_PROFILE 里
-          if [ "${CONFIG_MODE:-multi}" = "single" ]; then
-            CUR=$(sed -n 's/^CONFIG_TARGET_PROFILE="DEVICE_\(xiaomi_be[0-9]*\)"$/\1/p' .config | head -n1)
-            if [ -z "$CUR" ]; then
-              echo "::error::单 profile 配置中未解析到机型（CONFIG_TARGET_PROFILE）"; exit 1
+          if [ "$TARGET" = "ax" ] || [ "$TARGET" = "ax3600" ]; then
+            # AX 平台：把 config 的 TARGET_* 段替换为对应模板，保留公共包清单
+            case "$TARGET" in
+              ax)     TPL=".github/targets/ax1800.target" ;;
+              ax3600) TPL=".github/targets/ax3600.target" ;;
+            esac
+            [ -f "$TPL" ] || { echo "::error::缺少 $TPL"; exit 1; }
+            python3 - "$TPL" <<'PYEOF'
+          import re, sys
+          tpl = sys.argv[1]
+          ax = {}
+          for l in open(tpl, encoding='utf-8', errors='replace'):
+              s = l.rstrip('\n')
+              m = re.match(r'^(# )?CONFIG_TARGET_([A-Za-z0-9_.-]+)(.*)$', s)
+              if m:
+                  ax[m.group(2)] = s
+          out = []
+          for l in open('.config', encoding='utf-8', errors='replace'):
+              s = l.rstrip('\n')
+              m = re.match(r'^(# )?CONFIG_TARGET_([A-Za-z0-9_.-]+)(.*)$', s)
+              if m:
+                  continue
+              out.append(s)
+          for k, v in ax.items():
+              out.append(v)
+          open('.config', 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
+          print('AX target 段已注入（全量替换，%d 行）' % len(ax))
+          PYEOF
+            # 追加 AX 专属驱动（defconfig 会自动处理依赖）
+            if [ "$TARGET" = "ax" ]; then
+              for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
+                       ath11k-firmware-ipq6018-ddwrt ipq-wifi-xiaomi_ax1800 kmod-nss-wifi-drv; do
+                grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
+              done
+            else
+              # AX3600 = ipq8071 + ATH11K(2.4G/5G 主射频) + ATH10K(AIoT) + ipq-wifi
+              # all.config 基底把这些包都写成 not set，必须显式打开，否则主射频无驱动/固件
+              for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
+                       ath11k-firmware-ipq8074-ddwrt \
+                       kmod-ath10k ath10k-firmware-qca9887 ipq-wifi-xiaomi_ax3600 \
+                       kmod-nss-wifi-drv; do
+                sed -i "s|^# CONFIG_PACKAGE_${p} is not set$|CONFIG_PACKAGE_${p}=y|" .config
+                grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
+              done
             fi
-            if [ -n "$WANT" ] && [ "$WANT" != "$CUR" ]; then
-              echo "::error::$CONFIG_FILE 固定为 $CUR，与所选机型 $WANT 不一致；请改用 all.config/min.config 或选择对应机型"
-              exit 1
-            fi
-            echo "单 profile 配置：机型固定为 $CUR（$CONFIG_FILE）"
-            exit 0
-          fi
-
-          if [ -z "$WANT" ]; then
-            echo "全机型：保持 $CONFIG_FILE 中的机型选择不变"
-            exit 0
-          fi
-          # 多机型模式，软件包由各机型 DEVICE_PACKAGES 决定，
-          # 因此这里只需要去掉未选机型的 DEVICE 行。
-          awk -v keep="_DEVICE_${WANT}=y" '
-            /^CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y$/ {
-              if ($0 !~ keep) {
-                sub(/^CONFIG_TARGET_DEVICE_/, "# CONFIG_TARGET_DEVICE_")
-                sub(/=y$/, " is not set")
+          else
+            # BE：config 已是 qualcommbe，只保留勾中的机型（多机型按 DEVICE 行过滤）
+            for dev in $DEVICES; do
+              grep -qx "CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_${dev}=y" .config || \
+                echo "CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_${dev}=y" >> .config
+            done
+            awk -v keep="$DEVICES" '
+              /^CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y$/ {
+                d=$0; sub(/^.*DEVICE_/,"",d); sub(/=y$/,"",d)
+                if (index(" " keep " ", " " d " ") == 0) {
+                  sub(/^CONFIG_TARGET_DEVICE_/, "# CONFIG_TARGET_DEVICE_"); sub(/=y$/, " is not set")
+                }
               }
-            }
-            { print }
-          ' .config > .config.device && mv .config.device .config
-          echo "已限定机型：$WANT"
-          grep -E '^#? ?CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)' .config
+              { print }
+            ' .config > .config.dev && mv .config.dev .config
+            echo "CONFIG_TARGET_MULTI_PROFILE=y" >> .config
+            echo "CONFIG_TARGET_PER_DEVICE_ROOTFS=y" >> .config
+          fi
+
+          echo "--- 目标 target 段 ---"
+          grep -E '^CONFIG_TARGET_(qualcommbe|qualcommax)(_ipq95xx|_ipq60xx|_ipq807x)?=y$|^CONFIG_TARGET_PROFILE=|^CONFIG_TARGET_DEVICE_.*DEVICE_xiaomi.*=y$' .config | grep -v 'is not set' | head -10
+
+          # AX3600-stock 专属：预置修正后的 wireless 配置 + 一个只改 MAC 的 uci-defaults。
+          # 预置配置避免了 uci-defaults 执行早于 wifi detect 导致 radio 段被覆盖的时序问题。
+          # wifi config(detect) 不覆盖已有配置，故开机即为合规信道 + CN；files/ 编译时并入 rootfs。
+          if [ "$TARGET" = "ax3600" ]; then
+            mkdir -p files/etc/config
+            cat > files/etc/config/wireless <<'WLANEOF'
+          config wifi-device 'radio0'
+          	option type 'mac80211'
+          	option path 'soc@0/20000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0'
+          	option band '5g'
+          	option channel '149'
+          	option htmode 'VHT80'
+          	option country 'CN'
+
+          config wifi-iface 'default_radio0'
+          	option device 'radio0'
+          	option network 'lan'
+          	option mode 'ap'
+          	option ssid 'OWRT-Xiaomi-AX3600-STOCK-5.8G'
+          	option encryption 'psk2+ccmp'
+          	option key '12345678'
+          	option disabled '0'
+
+          config wifi-device 'radio1'
+          	option type 'mac80211'
+          	option path 'platform/soc@0/c000000.wifi'
+          	option band '5g'
+          	option channel '36'
+          	option htmode 'HE80'
+          	option country 'CN'
+
+          config wifi-iface 'default_radio1'
+          	option device 'radio1'
+          	option network 'lan'
+          	option mode 'ap'
+          	option ssid 'OWRT-Xiaomi-AX3600-STOCK-5.2G'
+          	option encryption 'psk2+ccmp'
+          	option key '12345678'
+          	option disabled '0'
+
+          config wifi-device 'radio2'
+          	option type 'mac80211'
+          	option path 'platform/soc@0/c000000.wifi+1'
+          	option band '2g'
+          	option channel 'auto'
+          	option htmode 'HE20'
+          	option country 'CN'
+
+          config wifi-iface 'default_radio2'
+          	option device 'radio2'
+          	option network 'lan'
+          	option mode 'ap'
+          	option ssid 'OWRT-Xiaomi-AX3600-STOCK-2.4G'
+          	option encryption 'psk2+ccmp'
+          	option key '12345678'
+          	option disabled '0'
+          WLANEOF
+            mkdir -p files/etc/uci-defaults
+            cat > files/etc/uci-defaults/99-ax3600-stock-mac <<'WIFIEOF'
+          #!/bin/sh
+          # AX3600-stock：仅给 AIoT(radio0) 独立 MAC（base+3），避开与主5G 的 BSSID 冲突。
+          # channel/country 已由预置的 /etc/config/wireless 固定，无需在此处理。
+          [ "$(board_name 2>/dev/null)" = "xiaomi,ax3600-stock" ] || exit 0
+          base_mac=$(hexdump -s 0 -n 6 -e '6/1 "%02x:"' /dev/mtd8ro 2>/dev/null | sed 's/:$//')
+          case "$base_mac" in
+              *:*) ;;
+              *)   base_mac="8c:de:f9:b2:82:c0" ;;
+          esac
+          prefix=${base_mac%:*}
+          last=${base_mac##*:}
+          aiot_mac=$(printf '%s:%02x' "$prefix" "$((0x$last + 3))")
+          uci -q set wireless.default_radio0.macaddr="$aiot_mac"
+          uci -q commit wireless
+          exit 0
+          WIFIEOF
+            chmod +x files/etc/uci-defaults/99-ax3600-stock-mac
+            echo "已注入 AX3600-stock 预置 wireless 配置 + MAC 修复"
+          fi
 
       - name: Update feeds
         run: |
           ./scripts/feeds update -a
+          # honk / luci-app-honk 强制取 openwrt-honk feed（kenzok/jell 的同名副本缺 files/update.sh）
+          ./scripts/feeds install -a -p honk
           ./scripts/feeds install -a
+          echo "--- honk 来源确认 ---"
+          readlink -f package/feeds/honk/honk 2>/dev/null || true
+          readlink -f package/feeds/honk/luci-app-honk 2>/dev/null || true
 
       - name: Prepare build config
         run: |
@@ -170,410 +352,210 @@ jobs:
           echo "CONFIG_CCACHE=y" >> .config
           export FORCE=1
           make defconfig
-          if [ "${CONFIG_MODE:-multi}" = "multi" ]; then
-            # 多机型与按设备 rootfs 必须保留，否则会被 Kconfig 拍平成单 profile
-            grep -qx 'CONFIG_TARGET_MULTI_PROFILE=y' .config || {
-              echo "::error::CONFIG_TARGET_MULTI_PROFILE 未生效，请检查 $CONFIG_FILE"; exit 1; }
-            grep -qx 'CONFIG_TARGET_PER_DEVICE_ROOTFS=y' .config || {
-              echo "::error::CONFIG_TARGET_PER_DEVICE_ROOTFS 未生效"; exit 1; }
-            # 机型列表以最终 .config 为准（兼容多机型与单机型两种符号写法）
-            DEVS=$(grep -oE '^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y' .config \
-                   | grep -oE 'xiaomi_be(7000|10000)' | sort -u | tr '\n' ' ')
-          else
-            # 单 profile：机型由 CONFIG_TARGET_PROFILE 决定
-            DEVS=$(sed -n 's/^CONFIG_TARGET_PROFILE="DEVICE_\(xiaomi_be[0-9]*\)"$/\1/p' .config | head -n1)
-            [ -n "$DEVS" ] || { echo "::error::单 profile 配置未解析到机型"; exit 1; }
-          fi
-          if [ -z "$DEVS" ]; then
-            echo "::error::最终 .config 中没有目标机型，终止编译"; exit 1
-          fi
-          echo "目标机型：$DEVS"
-          echo "DEVICES=$DEVS" >> "$GITHUB_ENV"
-          case "$(echo $DEVS | wc -w)" in
-            1) case "$DEVS" in *be7000*) LABEL='小米 BE7000' ;; *) LABEL='小米 BE10000' ;; esac ;;
-            *) LABEL='BE7000 + BE10000 双机型' ;;
+          # 校验 target 与机型
+          case "${{ matrix.target }}" in
+            be) grep -qx 'CONFIG_TARGET_qualcommbe_ipq95xx=y' .config || { echo "::error::BE target 未生效"; exit 1; }
+                for dev in ${{ matrix.devices }}; do
+                  grep -qE "^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_${dev}=y" .config || { echo "::error::${dev} 未选中"; exit 1; }
+                done ;;
+            ax) grep -qx 'CONFIG_TARGET_qualcommax_ipq60xx=y' .config || { echo "::error::AX1800 target(ipq60xx) 未生效"; exit 1; }
+                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax1800"' .config || { echo "::error::AX1800 profile 未生效"; exit 1; } ;;
+            ax3600) grep -qx 'CONFIG_TARGET_qualcommax_ipq807x=y' .config || { echo "::error::AX3600 target(ipq807x) 未生效"; exit 1; }
+                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax3600-stock"' .config || { echo "::error::AX3600 stock profile 未生效"; exit 1; } ;;
           esac
-          echo "DEVLABEL=$LABEL" >> "$GITHUB_ENV"
-          echo "编译机型：$LABEL"
-          if [ "${CONFIG_MODE:-multi}" = "multi" ]; then
-            for dev in $DEVS; do
-              grep -qE "^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_${dev}=y" .config \
-                || { echo "::error::${dev} 未被选中"; exit 1; }
-            done
-          else
-            grep -qE "^CONFIG_TARGET_PROFILE=\"DEVICE_${DEVS}\"$" .config \
-              || { echo "::error::单 profile 机型校验失败：${DEVS}"; exit 1; }
-          fi
-          echo '机型校验通过'
-          grep -E '^CONFIG_TARGET_(MULTI_PROFILE|PER_DEVICE_ROOTFS|PROFILE="DEVICE_xiaomi_be|DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be)' .config || true
+          echo "target 与机型校验通过"
+          echo "DEVS=${{ matrix.devices }}" >> "$GITHUB_ENV"
 
       - name: Apply extra packages
         env:
           EXTRA_PACKAGES: ${{ github.event.inputs.extra_packages }}
         run: |
           set -euo pipefail
-          if [ -z "${EXTRA_PACKAGES:-}" ]; then
-            echo "未填写额外软件包，跳过。"
-            exit 0
-          fi
-          # 依赖解析依赖包元数据（feeds install 之后才完整）
-          if [ ! -s tmp/.packageinfo ] || [ ! -s tmp/.config-package.in ]; then
-            echo "生成包元数据（make prepare-tmpinfo）..."
-            make prepare-tmpinfo
-          fi
-          if [ ! -s tmp/.packageinfo ]; then
-            echo "::error::包元数据 tmp/.packageinfo 生成失败，无法补齐依赖"
-            exit 1
-          fi
+          if [ -z "${EXTRA_PACKAGES:-}" ]; then echo "未填写额外软件包，跳过。"; exit 0; fi
+          if [ ! -s tmp/.packageinfo ] || [ ! -s tmp/.config-package.in ]; then make prepare-tmpinfo; fi
+          [ -s tmp/.packageinfo ] || { echo "::error::包元数据生成失败"; exit 1; }
           echo "请求的额外软件包：$EXTRA_PACKAGES"
-          # 自动补齐运行时依赖（含 kmod / docker 栈 / i18n 的父应用等）
           python3 .github/scripts/resolve_pkg_deps.py .config $EXTRA_PACKAGES
           export FORCE=1
           make defconfig
-          echo "--- 已启用包核验 ---"
           missing=0
           for pkg in $EXTRA_PACKAGES; do
-            if grep -qx "CONFIG_PACKAGE_${pkg}=y" .config; then
-              echo "  ✓ $pkg"
-            else
-              echo "  ✗ $pkg 未生效（包名无效或依赖不满足）"
-              missing=$((missing+1))
-            fi
+            if grep -qx "CONFIG_PACKAGE_${pkg}=y" .config; then echo "  ✓ $pkg"; else echo "  ✗ $pkg 未生效"; missing=$((missing+1)); fi
           done
-          if [ "$missing" -gt 0 ]; then
-            echo "::warning::有 $missing 个额外软件包未生效，请检查上面日志"
-          fi
+          if [ "$missing" -gt 0 ]; then echo "::warning::有 $missing 个额外软件包未生效"; fi
+          exit 0
 
       - name: Download sources
         run: make download -j4
 
       - name: Compile firmware
-        run: |
-          make -j4 || make -j1 V=s
+        run: make -j4 || make -j1 V=s
 
-      # 收集 7 个独立附件：config.buildinfo + 两机型各 bin / ubi / itb
       - name: Collect release assets
         id: collect
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          # 固件文件名时间戳（北京时间）：全工作流只生成一次，artifacts 与 release 共用
           STAMP=$(TZ=Asia/Shanghai date +'%Y.%m.%d-%H.%M.%S')
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
-          echo "固件文件名时间戳: $STAMP"
-          T="bin/targets/qualcommbe/ipq95xx"
+          T="bin/targets/${{ matrix.board }}/${{ matrix.subtarget }}"
           [ -d "$T" ] || { echo "::error::未找到输出目录 $T"; exit 1; }
-
-          # 第七个附件：构建配置
           CB=$(find "$T" -maxdepth 1 -type f -name 'config.buildinfo' | head -n1)
           [ -n "$CB" ] || { echo "::error::缺少 config.buildinfo"; exit 1; }
-          cp "$CB" release-assets/config.buildinfo
-
+          cp "$CB" "release-assets/config.buildinfo-${{ matrix.target }}-${STAMP}"
           pick() {
             local dev="$1" hint="$2" ext="$3" f
             f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*${hint}*.${ext}" | head -n1)
-            if [ -z "$f" ]; then
-              f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" | head -n1)
-            fi
-            if [ -z "$f" ]; then
-              echo "::error::缺少 ${dev} 的 .${ext} 产物"; exit 1
-            fi
+            [ -z "$f" ] && f=$(find "$T" -maxdepth 1 -type f -name "*${dev}*.${ext}" | head -n1)
+            [ -z "$f" ] && { echo "::error::缺少 ${dev} 的 .${ext}"; exit 1; }
             base=$(basename "$f")
             cp "$f" "release-assets/${base%.*}-${STAMP}.${base##*.}"
           }
-          for dev in $DEVICES; do
-            pick "$dev" "squashfs-sysupgrade" "bin"
-            pick "$dev" "squashfs-factory"   "ubi"
-            pick "$dev" "initramfs-uImage"   "itb"
+          for dev in ${{ matrix.devices }}; do
+            # AX3600 只编 stock 版（原厂分区布局）：Kconfig 下两个变体互斥
+            # stock 变体无独立 itb（源码 ARTIFACTS 为空），只收 sysupgrade.bin + factory.ubi
+            if [ "$dev" = "xiaomi_ax3600" ]; then
+              pick "xiaomi_ax3600-stock" "squashfs-sysupgrade" "bin"
+              pick "xiaomi_ax3600-stock" "factory" "ubi"
+            else
+              pick "$dev" "squashfs-sysupgrade" "bin"
+              pick "$dev" "factory"   "ubi"
+              pick "$dev" "initramfs-uImage" "itb"
+            fi
           done
-
-          count=$(find release-assets -maxdepth 1 -type f | wc -l)
-          expected=$(( 1 + 3 * $(echo $DEVICES | wc -w) ))
-          if [ "$count" -ne "$expected" ]; then
-            echo "::error::预期 $expected 个附件，实际 $count 个（可能有同名文件被覆盖）"
-            ls -l release-assets
-            exit 1
-          fi
-          echo "已收集 $count 个附件（$DEVLABEL）："
+          echo "已收集 $(find release-assets -maxdepth 1 -type f | wc -l) 个产物："
           ls -lh release-assets
 
-      # upload-artifact@v7 限制：archive:false 时一个步骤「只能上传 1 个文件」。
-      # 因此 7 个附件拆成 7 个步骤逐条上传，每个 glob 恰好匹配 1 个文件，
-      # 且 7 个文件名互不相同（archive:false 下 artifact 名 = 文件名）。
-      - name: Upload config.buildinfo
+      - name: Upload build output
         uses: actions/upload-artifact@v7
         with:
-          path: release-assets/config.buildinfo
-          archive: false
-          if-no-files-found: error
+          name: build-${{ matrix.target }}
+          path: release-assets/*
+          retention-days: 3
 
-      - name: Upload BE7000 sysupgrade.bin
-        if: contains(env.DEVICES, 'xiaomi_be7000')
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-assets/*-xiaomi_be7000-*.bin
-          archive: false
-          if-no-files-found: error
+  # ---------- 3. 汇总产物，创建 Release，推送结果 ----------
+  release:
+    needs: [resolve, build]
+    if: ${{ always() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record start time
+        id: start_time
+        run: echo "start_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload BE7000 factory.ubi
-        if: contains(env.DEVICES, 'xiaomi_be7000')
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-assets/*-xiaomi_be7000-*.ubi
-          archive: false
-          if-no-files-found: error
+      - name: Checkout source code
+        uses: actions/checkout@v4
 
-      - name: Upload BE7000 initramfs.itb
-        if: contains(env.DEVICES, 'xiaomi_be7000')
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-assets/*-xiaomi_be7000-*.itb
-          archive: false
-          if-no-files-found: error
+      - name: Download build outputs
+        run: |
+          mkdir -p release-assets
+          for t in $(echo '${{ needs.resolve.outputs.matrix }}' | python3 -c 'import json,sys; print(" ".join(x["target"] for x in json.load(sys.stdin)["include"]))'); do
+            echo "下载 build-$t"
+          done
 
-      - name: Upload BE10000 sysupgrade.bin
-        if: contains(env.DEVICES, 'xiaomi_be10000')
-        uses: actions/upload-artifact@v7
+      - name: Collect all assets
+        uses: actions/download-artifact@v4
         with:
-          path: release-assets/*-xiaomi_be10000-*.bin
-          archive: false
-          if-no-files-found: error
+          path: .
+          merge-multiple: false
 
-      - name: Upload BE10000 factory.ubi
-        if: contains(env.DEVICES, 'xiaomi_be10000')
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-assets/*-xiaomi_be10000-*.ubi
-          archive: false
-          if-no-files-found: error
-
-      - name: Upload BE10000 initramfs.itb
-        if: contains(env.DEVICES, 'xiaomi_be10000')
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-assets/*-xiaomi_be10000-*.itb
-          archive: false
-          if-no-files-found: error
+      - name: Flatten assets
+        run: |
+          set -euo pipefail
+          find build-* -maxdepth 1 -type f -exec cp {} release-assets/ \; 2>/dev/null || true
+          echo "汇总附件 $(find release-assets -maxdepth 1 -type f | wc -l) 个："
+          ls -lh release-assets
 
       - name: Create GitHub Release
         id: release
-        # 主交付是 Release；只要 7 个附件收集齐，就不因 artifact 上传意外而跳过
-        if: ${{ !cancelled() && steps.collect.outcome == 'success' }}
+        if: ${{ needs.build.result == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          if [ "${CONFIG_MODE:-multi}" = "multi" ]; then PROFILE_DESC='MULTI_PROFILE + PER_DEVICE_ROOTFS'; else PROFILE_DESC='单 profile'; fi
-          # 北京时间日期 + 当日编译序号，例如 v2026.11.12.02
           DATE=$(TZ=Asia/Shanghai date +%Y.%m.%d)
           PREFIX="v${DATE}."
           gh api --paginate -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/tags?per_page=100" --jq '.[].name' \
-            > tags.txt 2>/dev/null || : > tags.txt
-
+            "repos/${GITHUB_REPOSITORY}/tags?per_page=100" --jq '.[].name' > tags.txt 2>/dev/null || : > tags.txt
           n=1
           while :; do
             TAG="${PREFIX}$(printf '%02d' "$n")"
-            if grep -qxF "$TAG" tags.txt; then n=$((n + 1)); continue; fi
-            if gh release view "$TAG" >/dev/null 2>&1; then n=$((n + 1)); continue; fi
+            grep -qxF "$TAG" tags.txt && { n=$((n+1)); continue; }
+            gh release view "$TAG" >/dev/null 2>&1 && { n=$((n+1)); continue; }
             break
           done
-          echo "Release tag: $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
           {
-            echo "### 固件：${DEVLABEL}"
+            echo "### 固件：${{ needs.resolve.outputs.devices_label }}"
             echo ""
-            echo "- 机型选项：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE}\`，${PROFILE_DESC}）"
-            EXTRA_RAW="${{ github.event.inputs.extra_packages }}"
-            if [ -n "$EXTRA_RAW" ]; then
-              EXTRA_FMT=$(printf '%s' "$EXTRA_RAW" | sed 's/  */\`、\`/g')
-              echo "- 额外软件包：\`${EXTRA_FMT}\`"
-            else
-              echo "- 额外软件包：无"
-            fi
+            echo "- 配置文件：\`${{ needs.resolve.outputs.config_file }}\`"
+            echo "- 额外软件包：$(if [ -n '${{ github.event.inputs.extra_packages }}' ]; then printf '%s' '${{ github.event.inputs.extra_packages }}' | sed 's/  */、/g'; else echo 无; fi)"
             echo "- 源码：\`${GITHUB_REPOSITORY}\` @ \`${GITHUB_SHA}\`（分支 \`${GITHUB_REF_NAME}\`）"
             echo "- 编译时间（北京时间）：$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
             echo "- 构建记录：[#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
             echo ""
-            echo "### 附件（$(ls release-assets | wc -l) 个，未打包，逐一下载）"
-            echo ""
-            echo "| 文件 | 大小 |"
-            echo "| --- | --- |"
-            for f in release-assets/*; do
-              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
-            done
-            if [ -s "$BUILD_NOTES" ]; then
-              echo ""
-              echo "---"
-              echo ""
-              cat "$BUILD_NOTES"
-              echo ""
-            fi
-          } > release_notes.md
-
-          # 每个文件都是独立 asset，不打包成 zip
-          gh release create "$TAG" release-assets/* \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --notes-file release_notes.md
-          echo "Release 创建完成：https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+            echo "### 附件（$(ls release-assets | wc -l) 个）"
+            echo "| 文件 | 大小 |"; echo "| --- | --- |"
+            for f in release-assets/*; do echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"; done
+          } > release_body.md
+          gh release create "$TAG" release-assets/* --title "$TAG (${{ needs.resolve.outputs.devices_label }})" --notes-file release_body.md
 
       - name: PushPlus result notification
         if: always()
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          JOB_STATUS: ${{ job.status }}
           START_TS: ${{ steps.start_time.outputs.start_ts }}
-          INPUT_DEVICE: ${{ github.event.inputs.device }}
-          INPUT_EXTRA_PACKS: ${{ github.event.inputs.extra_packages }}
+          BUILD_RESULT: ${{ needs.build.result }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          DEV_LABEL: ${{ needs.resolve.outputs.devices_label }}
+          CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
+          INPUT_EXTRA_PACKS: ${{ github.event.inputs.extra_packages }}
         run: |
           set +e
-          if [ -z "${PUSHPLUS_TOKEN:-}" ]; then
-            echo "::warning::PUSHPLUS_TOKEN 未配置，跳过推送"
-            exit 0
-          fi
-
-          # ---- 基础信息 ----
-          WF_NAME="Build ImmortalWrt (new)"
-          BRANCH="${GITHUB_REF_NAME}"
-          RUN_ID="${GITHUB_RUN_ID}"
-          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
-          case "${JOB_STATUS:-}" in
-            success)   STATUS_TEXT="成功 ✅"; STATUS_COLOR="green" ;;
-            cancelled) STATUS_TEXT="已取消 ⏸"; STATUS_COLOR="#e67e22" ;;
-            failure)   STATUS_TEXT="失败 ❌"; STATUS_COLOR="red" ;;
-            *)         STATUS_TEXT="${JOB_STATUS:-未知}"; STATUS_COLOR="#555" ;;
+          [ -z "${PUSHPLUS_TOKEN:-}" ] && { echo "::warning::PUSHPLUS_TOKEN 未配置，跳过"; exit 0; }
+          case "${BUILD_RESULT:-}" in
+            success) ST="成功"; COLOR="green" ;;
+            failure) ST="失败"; COLOR="red" ;;
+            cancelled) ST="已取消"; COLOR="#e67e22" ;;
+            *) ST="${BUILD_RESULT:-未知}"; COLOR="#555" ;;
           esac
-
-          # ---- 计算耗时：优先用 step 记录，否则用 API 的 run started_at ----
           START_TS="${START_TS:-}"
-          if [ -z "$START_TS" ]; then
-            RS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" \
-                  --jq .run_started_at 2>/dev/null)
-            [ -n "$RS" ] && START_TS=$(date -d "$RS" +%s 2>/dev/null)
-          fi
           if [ -n "$START_TS" ]; then
-            DUR_SEC=$(( $(date +%s) - START_TS ))
-            [ "$DUR_SEC" -lt 0 ] && DUR_SEC=0
-            DUR=$(printf '%02d:%02d:%02d' $((DUR_SEC/3600)) $(((DUR_SEC%3600)/60)) $((DUR_SEC%60)))
-          else
-            DUR="未知"
-          fi
-
-          # ---- 找失败步骤（GH_TOKEN 由 actions 提供，permissions.actions=read）----
-          FAIL_REASON=""
-          FAILED_STEPS=""
-          if [ "${JOB_STATUS:-}" = "failure" ]; then
-            FAILED_STEPS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
-              --jq '[.jobs[].steps[] | select(.conclusion=="failure") | .name] | join("、")' 2>/dev/null)
-            [ -z "$FAILED_STEPS" ] && FAILED_STEPS="未定位到具体步骤（请查看 run 日志）"
-            # 从 build notes 里抽取带 error/失败关键词的行
-            if [ -s "${BUILD_NOTES:-.github/build-notes.md}" ]; then
-              FAIL_REASON=$(grep -iE "error|failed|错误|失败" "${BUILD_NOTES:-.github/build-notes.md}" 2>/dev/null \
-                            | tail -5 | tr '\n' ';' | cut -c1-500)
-            fi
-            [ -z "$FAIL_REASON" ] && FAIL_REASON="请查看 run 日志中失败步骤的输出"
-          fi
-
-          # ---- 触发参数 ----
-          CFG="${CONFIG_FILE:-all.config}"
-          DEV="${INPUT_DEVICE:-}"
-          EXTRA="${INPUT_EXTRA_PACKS:-}"
-          [ -z "$EXTRA" ] && EXTRA="（无）"
-          TAG="${RELEASE_TAG:-}"
-
-          # ---- 拼 HTML ----
-          ROWS=""
-          add_row() { ROWS="${ROWS}<tr><td style='padding:6px 12px;border:1px solid #ddd;background:#f7f7f7;white-space:nowrap;'><b>$1</b></td><td style='padding:6px 12px;border:1px solid #ddd;'>$2</td></tr>"; }
-          add_row "工作流" "$(printf '%s' "$WF_NAME" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')"
-          add_row "状态" "<span style='color:${STATUS_COLOR};'><b>${STATUS_TEXT}</b></span>"
-          add_row "用时" "<b>${DUR}</b>"
-          add_row "分支" "<code>${BRANCH}</code>"
-          add_row "配置文件" "<code>${CFG}</code>"
-          add_row "机型" "$(printf '%s' "$DEV" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')"
-          add_row "额外包" "<code>$(printf '%s' "$EXTRA" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g' | cut -c1-300)</code>"
-          if [ -n "$TAG" ]; then
-            add_row "Release" "<a href='https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}'>${TAG}</a>"
-          else
-            add_row "Release" "未创建"
-          fi
-          if [ -n "$FAILED_STEPS" ]; then
-            add_row "失败步骤" "<span style='color:red;'>$(printf '%s' "$FAILED_STEPS" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')</span>"
-          fi
-          if [ -n "$FAIL_REASON" ]; then
-            add_row "失败原因" "<span style='color:#c0392b;'>$(printf '%s' "$FAIL_REASON" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')</span>"
-          fi
-          add_row "运行链接" "<a href='${RUN_URL}'>查看完整日志 #${RUN_ID}</a>"
-
-          CONTENT="<h3>${WF_NAME}</h3><table style='border-collapse:collapse;width:100%;'>${ROWS}</table>\
-          <p style='color:#888;font-size:12px;'>由 GitHub Actions 自动推送 · ${BRANCH} · ${GITHUB_SHA:0:7}</p>"
-
-          # ---- 用 python3 生成 JSON，避免转义问题 ----
-          PUSH_TITLE="${STATUS_TEXT%% *} | ${WF_NAME} | ${BRANCH}"
-          PUSH_TITLE=$(printf '%s' "$PUSH_TITLE" | sed 's/&/\&amp;/g;s/</\&lt;/g;s/>/\&gt;/g')
-          export PUSH_TITLE CONTENT
-          python3 - <<'PYEOF'
-          import json, os, urllib.request, urllib.error
-          payload = {
-              "token": os.environ["PUSHPLUS_TOKEN"],
-              "title": os.environ["PUSH_TITLE"],
-              "content": os.environ["CONTENT"],
-              "template": "html",
-          }
-          req = urllib.request.Request(
-              "https://www.pushplus.plus/send",
-              data=json.dumps(payload).encode("utf-8"),
-              headers={"Content-Type": "application/json"},
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(req, timeout=20) as r:
-                  body = r.read().decode("utf-8", "replace")
-              print("PushPlus 返回:", body)
-              if '"code":200' not in body.replace(" ", ""):
-                  print("::warning::PushPlus 返回非 200，推送可能失败")
-          except Exception as e:
-              print("::warning::PushPlus 推送异常: %s" % e)
+            D=$(( $(date +%s) - START_TS )); [ "$D" -lt 0 ] && D=0
+            DUR=$(printf '%02d:%02d:%02d' $((D/3600)) $(((D%3600)/60)) $((D%60)))
+          else DUR="未知"; fi
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          REL="${RELEASE_TAG:-未创建}"
+          EXTRA="${INPUT_EXTRA_PACKS:-无}"
+          python3 - "$ST" "$COLOR" "$DUR" "$DEV_LABEL" "$CONFIG_FILE" "$EXTRA" "$REL" "$RUN_URL" <<'PYEOF' > payload.json
+          import json,sys,html
+          st,color,dur,label,cfg,extra,rel,url=sys.argv[1:9]
+          rows=[("工作流","Build ImmortalWrt (new)"),("状态",f'<span style="color:{color}">{html.escape(st)}</span>'),
+                ("用时",dur),("机型",html.escape(label)),("配置",html.escape(cfg)),
+                ("额外软件包",html.escape(extra)),("Release",html.escape(rel)),
+                ("运行链接",f'<a href="{html.escape(url)}">查看日志</a>')]
+          body="<table border=1 cellpadding=6 cellspacing=0>"+"".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k,v in rows)+"</table>"
+          print(json.dumps({"token":"","title":f"{st} | Build ImmortalWrt (new) | {label}",
+                            "content":body,"template":"html"},ensure_ascii=False))
           PYEOF
+          python3 - "payload.json" "$PUSHPLUS_TOKEN" <<'PYEOF' > payload2.json
+          import json,sys
+          d=json.load(open(sys.argv[1])); d["token"]=sys.argv[2]
+          print(json.dumps(d,ensure_ascii=False))
+          PYEOF
+          curl -sS -X POST "https://www.pushplus.plus/send" -H "Content-Type: application/json" \
+            --data-binary @payload2.json | head -c 200
 
       - name: Write Job Summary
         if: always()
         run: |
           {
-            echo "## 编译（new）· ${{ github.ref_name }}"
+            echo "## Build ImmortalWrt (new)"
             echo ""
-            echo "- 结果：\`${{ job.status }}\`"
-            echo "- 机型：\`${{ github.event.inputs.device }}\`（配置源 \`${CONFIG_FILE:-all.config}\`）"
-            EXTRA_RAW="${{ github.event.inputs.extra_packages }}"
-            if [ -n "$EXTRA_RAW" ]; then
-              EXTRA_FMT=$(printf '%s' "$EXTRA_RAW" | sed 's/  */\`、\`/g')
-              echo "- 额外软件包：\`${EXTRA_FMT}\`"
-            else
-              echo "- 额外软件包：无"
-            fi
-            TAG="${RELEASE_TAG:-}"
-            if [ -n "$TAG" ]; then
-              echo "- Release：**[$TAG](https://github.com/${{ github.repository }}/releases/tag/$TAG)**"
-            else
-              echo "- Release：未创建（编译或收集附件阶段失败）"
-            fi
-            echo "- Artifacts：[本页底部独立文件](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
-            echo ""
-            if [ -d release-assets ]; then
-              echo "| 附件 | 大小 |"
-              echo "| --- | --- |"
-              for f in release-assets/*; do
-                [ -f "$f" ] || continue
-                echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
-              done
-            fi
-            if [ -s "$BUILD_NOTES" ]; then
-              echo ""
-              echo "---"
-              echo ""
-              cat "$BUILD_NOTES"
-              echo ""
-            fi
+            echo "- 机型：${{ needs.resolve.outputs.devices_label }}"
+            echo "- 配置文件：${{ needs.resolve.outputs.config_file }}"
+            echo "- 额外软件包：$(if [ -n '${{ github.event.inputs.extra_packages }}' ]; then printf '%s' '${{ github.event.inputs.extra_packages }}' | sed 's/  */、/g'; else echo 无; fi)"
+            echo "- 构建结果：${{ needs.build.result }}"
+            echo "- Release：${{ steps.release.outputs.tag }}"
+            echo "- 构建记录：[#${GITHUB_RUN_NUMBER}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
           } >> "$GITHUB_STEP_SUMMARY"
