@@ -42,7 +42,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	IEEE80211_HW_SUPPORTS_TX_ENCAP_OFFLOAD,
  	IEEE80211_HW_SUPPORTS_RX_DECAP_OFFLOAD,
  	IEEE80211_HW_SUPPORTS_CONC_MON_RX_DECAP,
-@@ -5741,6 +5745,16 @@ static inline int ieee80211_sta_ps_trans
+@@ -5748,6 +5752,16 @@ static inline int ieee80211_sta_ps_trans
   * and possibly ieee80211_sta_uapsd_trigger(); calls to all three must
   * be serialized.
   */
@@ -61,7 +61,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  /**
 --- a/net/mac80211/cfg.c
 +++ b/net/mac80211/cfg.c
-@@ -2918,7 +2918,9 @@ static int ieee80211_set_sta_4addr(struc
+@@ -2920,7 +2920,9 @@ static int ieee80211_set_sta_4addr(struc
  
  	rcu_assign_pointer(sdata->u.vlan.sta, sta);
  	__ieee80211_check_fast_rx_iface(sdata);
@@ -72,7 +72,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  
  	return 0;
  }
-@@ -2992,8 +2994,11 @@ static int ieee80211_change_station(stru
+@@ -3001,8 +3003,11 @@ static int ieee80211_change_station(stru
  		}
  
  		if (sta->sdata->vif.type == NL80211_IFTYPE_AP_VLAN &&
@@ -196,7 +196,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		fallthrough;
  	default:
  		vif = &sdata->vif;
-@@ -3950,7 +3951,8 @@ void __ieee80211_xmit_fast(struct ieee80
+@@ -3953,7 +3954,8 @@ void __ieee80211_xmit_fast(struct ieee80
  		goto free;
  	}
  
@@ -206,7 +206,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		sdata = container_of(sdata->bss,
  				     struct ieee80211_sub_if_data, u.ap);
  
-@@ -4236,8 +4238,9 @@ begin:
+@@ -4239,8 +4241,9 @@ begin:
  		}
  		break;
  	case NL80211_IFTYPE_AP_VLAN:
@@ -218,7 +218,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  		fallthrough;
  	default:
  		vif = &tx.sdata->vif;
-@@ -4963,7 +4966,8 @@ static void ieee80211_8023_xmit(struct i
+@@ -4967,7 +4970,8 @@ static void ieee80211_8023_xmit(struct i
  
  	info->hw_queue = sdata->vif.hw_queue[queue];
  

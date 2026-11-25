@@ -49,7 +49,7 @@ Signed-off-by: ViKing <viking.yfy@qq.com>
  	struct ieee80211_bss_conf __rcu *tx_bss_conf;
 --- a/net/mac80211/cfg.c
 +++ b/net/mac80211/cfg.c
-@@ -3534,6 +3534,8 @@ static int ieee80211_change_bss(struct w
+@@ -3543,6 +3543,8 @@ static int ieee80211_change_bss(struct w
  		else
  			sdata->flags &= ~IEEE80211_SDATA_DONT_BRIDGE_PACKETS;
  		ieee80211_check_fast_rx_iface(sdata);
