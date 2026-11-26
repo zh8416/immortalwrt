@@ -1,4 +1,4 @@
-name: Build Single Package (a53 + a73)
+name: 编译单独软件包
 
 # 手动触发：输入单个软件包名，同时为 a53 / a73 两种架构各编译一个 apk。
 # 产物只发 Artifacts（upload-artifact@v7, archive:false, 每架构一个独立文件），不发 Release。
