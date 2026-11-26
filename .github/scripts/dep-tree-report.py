@@ -92,12 +92,21 @@ def main():
         return (not on) if neg else on
 
     def status(name):
-        v = values.get("PACKAGE_" + name, "missing")
-        if v == "y":
+        """三态: y=已勾选, n=未勾选(is not set), missing=不包含(符号不存在)"""
+        key = "PACKAGE_" + name
+        if key not in values:
+            return "missing"
+        v = values[key]
+        if v in ("y", "m"):
             return "y"
-        if v == "m":
-            return "m"
         return "n"
+
+    # GitHub Step Summary 支持的三种底色标签（浅色底 + 深色字，GitHub 明暗主题下均清晰）
+    BADGE = {
+        "y": '<span style="background:#d4edda;color:#155724;padding:0 6px;border-radius:10px">已勾选</span>',
+        "n": '<span style="background:#f5f5f5;color:#333;padding:0 6px;border-radius:10px;border:1px solid #ccc">未勾选</span>',
+        "missing": '<span style="background:#f8d7da;color:#721c24;padding:0 6px;border-radius:10px">不包含</span>',
+    }
 
     # 校验根包
     real_root = resolve(root)
@@ -132,30 +141,31 @@ def main():
     out.append("| 软件包 | `%s` |" % root)
     out.append("| 版本 | `%s` |" % (versions.get(real_root, "") or "未知"))
     out.append("| 依赖节点数 | %d |" % len(seen))
-    sel = sum(1 for n in seen if status(n) == "y")
-    miss = len(seen) - sel
-    out.append("| 状态统计 | 已选 %d / 未选 %d |" % (sel, miss))
+    cnt = {"y": 0, "n": 0, "missing": 0}
+    for n in seen:
+        cnt[status(n)] += 1
+    out.append("| 状态统计 | 已勾选 %d / 未勾选 %d / 不包含 %d |" % (cnt["y"], cnt["n"], cnt["missing"]))
     out.append("")
-    out.append("> 基于 **defconfig 之后** 的 `.config` 判定：`=y` 为已选，`is not set` 或缺失为未选。")
+    out.append("> 基于 **defconfig 之后** 的 `.config` 判定。")
     out.append("> 条件依赖仅在条件符号为 y/m 时纳入；虚拟包按 Provides 解析到实际提供者。\n")
     out.append("### 依赖树\n")
-    out.append("```text")
+    out.append("图例：" + BADGE["y"] + " " + BADGE["n"] + " " + BADGE["missing"] + "\n")
+    out.append("<pre>")
 
     def render(name, prefix, is_last, depth):
         st = status(name)
-        label = "[已选]" if st == "y" else ("[模块]" if st == "m" else "[未选]")
         connector = "└─ " if is_last else "├─ "
-        out.append(prefix + connector + name + "  " + label)
+        out.append(prefix + connector + name + "  " + BADGE[st])
         kids = children.get(name, [])
         child_prefix = prefix + ("   " if is_last else "│  ")
         for i, k in enumerate(kids):
             render(k, child_prefix, i == len(kids) - 1, depth + 1)
 
     render(real_root, "", True, 0)
-    out.append("```")
+    out.append("</pre>")
     out.append("")
     out.append("---")
-    out.append("图例：`[已选]` = `CONFIG_PACKAGE_x=y`；`[未选]` = `is not set` 或 config 中缺失。")
+    out.append("`已勾选` = `CONFIG_PACKAGE_x=y`；`未勾选` = `is not set`；`不包含` = defconfig 后该包符号不存在（当前配置下不可用）。")
 
     text = "\n".join(out) + "\n"
 
@@ -167,9 +177,13 @@ def main():
     else:
         print(text)
 
-    # 同时打印到日志，便于在 Actions log 里直接看
+    # 同时打印到日志：把 HTML badge 换成纯文本，避免日志里出现原始 HTML
+    logtext = text
+    for st, word in (("y", "已勾选"), ("n", "未勾选"), ("missing", "不包含")):
+        logtext = logtext.replace(BADGE[st], "[" + word + "]")
+    logtext = logtext.replace("<pre>", "").replace("</pre>", "")
     print("\n===== 依赖检查报告 =====\n")
-    print(text)
+    print(logtext)
     return 0
 
 
