@@ -1,4 +1,4 @@
-name: Build ImmortalWrt (new)
+name: 编译固件
 
 # 暂时只提供手动触发；不设 schedule / push / PR 触发器
 on:
