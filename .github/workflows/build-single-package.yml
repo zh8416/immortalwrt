@@ -1,0 +1,135 @@
+name: Build Single Package (a53 + a73)
+
+# 手动触发：输入单个软件包名，同时为 a53 / a73 两种架构各编译一个 apk。
+# 产物只发 Artifacts（upload-artifact@v7, archive:false, 每架构一个独立文件），不发 Release。
+# 依赖策略：只编译用户指定的单个包本身，运行时依赖由设备 apk 从软件源安装。
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: '单个软件包名（如 honk / luci-app-adguardhome / adguardhome），只填一个'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: a53
+            branch: owrt-ZHrgb
+          - arch: a73
+            branch: owrt-ZHrgb-a73
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+
+      - name: Cache downloads (dl/)
+        uses: actions/cache@v4
+        with:
+          path: dl
+          key: singlepkg-dl-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            singlepkg-dl-${{ matrix.arch }}-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: singlepkg-ccache-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            singlepkg-ccache-${{ matrix.arch }}-
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/.ghcup /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost /usr/local/lib/node_modules
+          sudo apt-get clean
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget time
+
+      - name: Validate package name
+        id: pkg
+        env:
+          PKG_INPUT: ${{ inputs.package }}
+        run: |
+          PKG="${PKG_INPUT#./}"
+          case "$PKG" in
+            ""|/*|*/*|*..*|*' '*)
+              echo "::error::非法包名（需单个包名，不含空格/路径）: $PKG"; exit 1 ;;
+          esac
+          echo "PKG=$PKG" >> "$GITHUB_ENV"
+          echo "name=$PKG" >> "$GITHUB_OUTPUT"
+
+      - name: Init feeds
+        run: |
+          ./scripts/feeds update -a
+          # honk / luci-app-honk 强制取 openwrt-honk feed（kenzok 同名副本缺 files/update.sh）
+          ./scripts/feeds install -a -p honk
+          ./scripts/feeds install -a
+          echo "--- 目标包定位 ---"
+          find package -maxdepth 3 -type l -name "$PKG" | head -3
+
+      - name: Verify package exists
+        run: |
+          if ! find package -maxdepth 4 \( -type l -o -type d \) -name "$PKG" 2>/dev/null | grep -q .; then
+            echo "::error::包 $PKG 在 feeds 中不存在，请检查包名"; exit 1
+          fi
+          echo "包 $PKG 存在，继续"
+
+      - name: Prepare build config
+        run: |
+          # 用当前分支自带的 all.config 作为基底（a53 分支= cortex-a53，a73 分支= cortex-a73）
+          cp all.config .config
+          # 只选中目标包：先确保它不是 "is not set"，再强制选中
+          sed -i "/^# CONFIG_PACKAGE_${PKG} is not set/d" .config
+          sed -i "/^CONFIG_PACKAGE_${PKG}=/d" .config
+          echo "CONFIG_PACKAGE_${PKG}=y" >> .config
+          export FORCE=1
+          make defconfig
+          grep -q "^CONFIG_PACKAGE_${PKG}=y" .config || { echo "::error::$PKG 未选中"; exit 1; }
+          echo "--- 架构确认 ---"
+          grep -E 'CONFIG_TARGET_ARCH_PACKAGES|CONFIG_CPU_TYPE' .config | head -4
+
+      - name: Build package
+        run: |
+          echo "编译单包: package/$PKG/compile"
+          make package/${PKG}/compile -j$(nproc) V=s
+
+      - name: Collect apk
+        id: collect
+        run: |
+          mkdir -p artifacts
+          # apk 产物在 bin/packages/<arch>/<feed>/ 下
+          APK=$(find bin/packages -type f -name "${PKG}_*.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::未找到 $PKG 的 apk 产物"; find bin/packages -type f 2>/dev/null | head -20; exit 1;
+          fi
+          cp "$APK" "artifacts/${PKG}-${{ matrix.arch }}.apk"
+          ls -lh artifacts/
+          echo "src=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Upload apk (${{ matrix.arch }})
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/${{ inputs.package }}-${{ matrix.arch }}.apk
+          archive: false
+          if-no-files-found: error
