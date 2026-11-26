@@ -101,11 +101,12 @@ def main():
             return "y"
         return "n"
 
-    # GitHub Step Summary 支持的三种底色标签（浅色底 + 深色字，GitHub 明暗主题下均清晰）
+    # Step Summary 会过滤内联 style，因此用 shields.io 徽章图片（GitHub 会渲染为带底色的文字标签）
+    # URL 里的中文需百分号编码；flat 样式为圆角标签，接近软件包页面效果
     BADGE = {
-        "y": '<span style="background:#d4edda;color:#155724;padding:0 6px;border-radius:10px">已勾选</span>',
-        "n": '<span style="background:#f5f5f5;color:#333;padding:0 6px;border-radius:10px;border:1px solid #ccc">未勾选</span>',
-        "missing": '<span style="background:#f8d7da;color:#721c24;padding:0 6px;border-radius:10px">不包含</span>',
+        "y": "![已勾选](https://img.shields.io/badge/%E5%B7%B2%E5%8B%BE%E9%80%89-2ea44f?style=flat)",
+        "n": "![未勾选](https://img.shields.io/badge/%E6%9C%AA%E5%8B%BE%E9%80%89-9aa0a6?style=flat)",
+        "missing": "![不包含](https://img.shields.io/badge/%E4%B8%8D%E5%8C%85%E5%90%AB-d73a4a?style=flat)",
     }
 
     # 校验根包
@@ -150,19 +151,19 @@ def main():
     out.append("> 条件依赖仅在条件符号为 y/m 时纳入；虚拟包按 Provides 解析到实际提供者。\n")
     out.append("### 依赖树\n")
     out.append("图例：" + BADGE["y"] + " " + BADGE["n"] + " " + BADGE["missing"] + "\n")
-    out.append("<pre>")
 
+    # Markdown 图片徽章在 <pre> 代码块里不会渲染，故用 <br> 换行 + &nbsp; 缩进
     def render(name, prefix, is_last, depth):
         st = status(name)
         connector = "└─ " if is_last else "├─ "
-        out.append(prefix + connector + name + "  " + BADGE[st])
+        nb = prefix.replace(" ", "&nbsp;")
+        out.append(nb + connector + name + " " + BADGE[st] + "<br>")
         kids = children.get(name, [])
         child_prefix = prefix + ("   " if is_last else "│  ")
         for i, k in enumerate(kids):
             render(k, child_prefix, i == len(kids) - 1, depth + 1)
 
     render(real_root, "", True, 0)
-    out.append("</pre>")
     out.append("")
     out.append("---")
     out.append("`已勾选` = `CONFIG_PACKAGE_x=y`；`未勾选` = `is not set`；`不包含` = defconfig 后该包符号不存在（当前配置下不可用）。")
@@ -177,11 +178,11 @@ def main():
     else:
         print(text)
 
-    # 同时打印到日志：把 HTML badge 换成纯文本，避免日志里出现原始 HTML
+    # 同时打印到日志：徽章图片换成纯文本标签，<br>/&nbsp; 还原为换行/空格
     logtext = text
     for st, word in (("y", "已勾选"), ("n", "未勾选"), ("missing", "不包含")):
         logtext = logtext.replace(BADGE[st], "[" + word + "]")
-    logtext = logtext.replace("<pre>", "").replace("</pre>", "")
+    logtext = logtext.replace("<br>", "\n").replace("&nbsp;", " ")
     print("\n===== 依赖检查报告 =====\n")
     print(logtext)
     return 0
