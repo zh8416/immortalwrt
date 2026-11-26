@@ -1,0 +1,254 @@
+name: 3 - 检查软件包依赖
+
+# 检查单个软件包的依赖树，与指定 config + 机型经 defconfig 后的 .config 比对。
+# config 生成逻辑与「编译固件」(build-all-new.yml) 完全一致，保证检查结果与真实编译对齐。
+# 结果直接写入 GitHub Actions 的 Step Summary 页面。
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: '配置文件（仓库根目录文件名，如 all.config / min.config；省略 .config 后缀也可）'
+        required: true
+        default: 'all.config'
+        type: string
+      be7000:
+        description: '机型：小米 BE7000（四选一，且必须选一个）'
+        required: false
+        default: false
+        type: boolean
+      be10000:
+        description: '机型：小米 BE10000（四选一，且必须选一个）'
+        required: false
+        default: false
+        type: boolean
+      ax1800:
+        description: '机型：小米 AX1800（四选一，且必须选一个）'
+        required: false
+        default: false
+        type: boolean
+      ax3600:
+        description: '机型：小米 AX3600（四选一，且必须选一个）'
+        required: false
+        default: false
+        type: boolean
+      package:
+        description: '要检查的单个软件包名（如 luci-app-homeproxy）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          ref: owrt-ZHrgb
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev file wget time
+
+      # ---------- 1. 解析输入：config 文件 + 机型（强制恰好一个） ----------
+      - name: Resolve inputs
+        id: resolve
+        env:
+          CONFIG_FILE_INPUT: ${{ github.event.inputs.config_file }}
+          BE7000: ${{ github.event.inputs.be7000 }}
+          BE10000: ${{ github.event.inputs.be10000 }}
+          AX1800: ${{ github.event.inputs.ax1800 }}
+          AX3600: ${{ github.event.inputs.ax3600 }}
+          PKG_INPUT: ${{ github.event.inputs.package }}
+        run: |
+          set -euo pipefail
+
+          # --- 机型：必须恰好勾选一个 ---
+          picked=""
+          for pair in "BE7000:$BE7000" "BE10000:$BE10000" "AX1800:$AX1800" "AX3600:$AX3600"; do
+            name="${pair%%:*}"; val="${pair##*:}"
+            [ "$val" = "true" ] && picked="$picked $name"
+          done
+          COUNT=$(echo "$picked" | wc -w)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::必须且只能勾选一个机型，当前勾选了 $COUNT 个：$picked"
+            exit 1
+          fi
+          MACHINE=$(echo "$picked" | tr -d ' ')
+          echo "已选机型: $MACHINE"
+
+          case "$MACHINE" in
+            BE7000|BE10000)
+              TARGET=be; BOARD=qualcommbe; SUBTARGET=ipq95xx
+              DEV="xiaomi_$(echo "$MACHINE" | tr 'A-Z' 'a-z')" ;;
+            AX1800)
+              TARGET=ax; BOARD=qualcommax; SUBTARGET=ipq60xx; DEV=xiaomi_ax1800 ;;
+            AX3600)
+              TARGET=ax3600; BOARD=qualcommax; SUBTARGET=ipq807x; DEV=xiaomi_ax3600 ;;
+          esac
+          echo "target=$TARGET board=$BOARD subtarget=$SUBTARGET dev=$DEV"
+
+          # --- 配置文件校验（照抄主工作流 Verify config file）---
+          RAW="${CONFIG_FILE_INPUT:-all.config}"
+          RAW="${RAW#./}"
+          case "$RAW" in
+            ""|/*|*..*) echo "::error::非法配置文件名：$RAW"; exit 1 ;;
+          esac
+          CONFIG_FILE="$RAW"
+          if [ ! -f "$CONFIG_FILE" ] && [ -f "${CONFIG_FILE}.config" ]; then CONFIG_FILE="${CONFIG_FILE}.config"; fi
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::配置文件 $RAW 未找到"; ls -1 *.config 2>/dev/null || true; exit 1;
+          fi
+
+          # --- 包名校验：单个合法包名 ---
+          PKG="${PKG_INPUT#./}"
+          case "$PKG" in
+            ""|/*|*/*|*..*|*' '*)
+              echo "::error::非法包名（需单个包名，不含空格/路径）: $PKG"; exit 1 ;;
+          esac
+
+          {
+            echo "config_file=$CONFIG_FILE"
+            echo "target=$TARGET"
+            echo "dev=$DEV"
+            echo "machine=$MACHINE"
+            echo "package=$PKG"
+          } >> "$GITHUB_OUTPUT"
+
+      # ---------- 2. 生成 .config（照抄主工作流 Prepare config for target，单机型版） ----------
+      - name: Prepare config for target
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+          TARGET: ${{ steps.resolve.outputs.target }}
+          DEV: ${{ steps.resolve.outputs.dev }}
+        run: |
+          set -euo pipefail
+          echo "配置源: $CONFIG_FILE | target: $TARGET | 机型: $DEV"
+          cp "$CONFIG_FILE" .config
+
+          if [ "$TARGET" = "ax" ] || [ "$TARGET" = "ax3600" ]; then
+            case "$TARGET" in
+              ax)     TPL=".github/targets/ax1800.target" ;;
+              ax3600) TPL=".github/targets/ax3600.target" ;;
+            esac
+            [ -f "$TPL" ] || { echo "::error::缺少 $TPL"; exit 1; }
+            python3 - "$TPL" <<'PYEOF'
+          import re, sys
+          tpl = sys.argv[1]
+          ax = {}
+          for l in open(tpl, encoding='utf-8', errors='replace'):
+              s = l.rstrip('\n')
+              m = re.match(r'^(# )?CONFIG_TARGET_([A-Za-z0-9_.-]+)(.*)$', s)
+              if m:
+                  ax[m.group(2)] = s
+          out = []
+          for l in open('.config', encoding='utf-8', errors='replace'):
+              s = l.rstrip('\n')
+              m = re.match(r'^(# )?CONFIG_TARGET_([A-Za-z0-9_.-]+)(.*)$', s)
+              if m:
+                  continue
+              out.append(s)
+          for k, v in ax.items():
+              out.append(v)
+          open('.config', 'w', encoding='utf-8', newline='\n').write('\n'.join(out) + '\n')
+          print('AX target 段已注入（全量替换，%d 行）' % len(ax))
+          PYEOF
+            if [ "$TARGET" = "ax" ]; then
+              for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
+                       ath11k-firmware-ipq6018-ddwrt ipq-wifi-xiaomi_ax1800 kmod-nss-wifi-drv; do
+                grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
+              done
+            else
+              for p in kmod-ath11k kmod-ath11k-ahb kmod-ath11k-pci \
+                       ath11k-firmware-ipq8074-ddwrt \
+                       kmod-ath10k ath10k-firmware-qca9887 ipq-wifi-xiaomi_ax3600 \
+                       kmod-nss-wifi-drv; do
+                sed -i "s|^# CONFIG_PACKAGE_${p} is not set$|CONFIG_PACKAGE_${p}=y|" .config
+                grep -qx "CONFIG_PACKAGE_${p}=y" .config || echo "CONFIG_PACKAGE_${p}=y" >> .config
+              done
+            fi
+          else
+            # BE：单机型，只保留勾中的 DEVICE 行
+            grep -qx "CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_${DEV}=y" .config || \
+              echo "CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_${DEV}=y" >> .config
+            awk -v keep="$DEV" '
+              /^CONFIG_TARGET_DEVICE_qualcommbe_ipq95xx_DEVICE_xiaomi_be(7000|10000)=y$/ {
+                d=$0; sub(/^.*DEVICE_/,"",d); sub(/=y$/,"",d)
+                if (index(" " keep " ", " " d " ") == 0) {
+                  sub(/^CONFIG_TARGET_DEVICE_/, "# CONFIG_TARGET_DEVICE_"); sub(/=y$/, " is not set")
+                }
+              }
+              { print }
+            ' .config > .config.dev && mv .config.dev .config
+            echo "CONFIG_TARGET_MULTI_PROFILE=y" >> .config
+            echo "CONFIG_TARGET_PER_DEVICE_ROOTFS=y" >> .config
+          fi
+
+          echo "--- 拼接后的 target 段 ---"
+          grep -E '^CONFIG_TARGET_(qualcommbe|qualcommax)(_ipq95xx|_ipq60xx|_ipq807x)?=y$|^CONFIG_TARGET_PROFILE=' .config | grep -v 'is not set' | head -8
+
+      # ---------- 3. feeds（照抄主工作流 Update feeds） ----------
+      - name: Update feeds
+        run: |
+          ./scripts/feeds update -a
+          # honk / luci-app-honk 强制取 openwrt-honk feed（kenzok/jell 的同名副本缺 files/update.sh）
+          ./scripts/feeds install -a -p honk
+          ./scripts/feeds install -a
+          echo "--- honk 来源确认 ---"
+          readlink -f package/feeds/honk/honk 2>/dev/null || true
+          readlink -f package/feeds/honk/luci-app-honk 2>/dev/null || true
+
+      # ---------- 4. defconfig + 包元数据（照抄主工作流 Prepare build config） ----------
+      - name: Prepare build config
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+          DEV: ${{ steps.resolve.outputs.dev }}
+        run: |
+          set -euo pipefail
+          echo "CONFIG_DEVEL=y" >> .config
+          echo "CONFIG_CCACHE=y" >> .config
+          export FORCE=1
+          make defconfig
+
+          echo "--- target 校验 ---"
+          case "$TARGET" in
+            be) grep -qx 'CONFIG_TARGET_qualcommbe_ipq95xx=y' .config || { echo "::error::BE target 未生效"; exit 1; }
+                grep -qE "^CONFIG_TARGET_(DEVICE_)?qualcommbe_ipq95xx_DEVICE_${DEV}=y" .config || { echo "::error::$DEV 未选中"; exit 1; } ;;
+            ax) grep -qx 'CONFIG_TARGET_qualcommax_ipq60xx=y' .config || { echo "::error::AX1800 target 未生效"; exit 1; }
+                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax1800"' .config || { echo "::error::AX1800 profile 未生效"; exit 1; } ;;
+            ax3600) grep -qx 'CONFIG_TARGET_qualcommax_ipq807x=y' .config || { echo "::error::AX3600 target 未生效"; exit 1; }
+                grep -qx 'CONFIG_TARGET_PROFILE="DEVICE_xiaomi_ax3600-stock"' .config || { echo "::error::AX3600 stock profile 未生效"; exit 1; } ;;
+          esac
+          echo "target 与机型校验通过"
+          echo "defconfig 完成；PACKAGE=y 数量: $(grep -c '^CONFIG_PACKAGE_.*=y$' .config)"
+
+          # prepare-tmpinfo 生成 .packageinfo（版本 + Depends 数据源）
+          make prepare-tmpinfo
+          [ -s tmp/.packageinfo ] || { echo "::error::包元数据生成失败"; exit 1; }
+          echo ".packageinfo 就绪"
+
+      # ---------- 4. 生成依赖检查报告到 Step Summary ----------
+      - name: Generate dependency report
+        env:
+          PKG: ${{ steps.resolve.outputs.package }}
+          MACHINE: ${{ steps.resolve.outputs.machine }}
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+        run: |
+          {
+            echo "# 依赖检查结果"
+            echo ""
+            echo "- 配置文件: \`$CONFIG_FILE\`"
+            echo "- 机型: $MACHINE"
+            echo "- 目标包: \`$PKG\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          python3 .github/scripts/dep-tree-report.py "$PKG" .config tmp/.packageinfo
