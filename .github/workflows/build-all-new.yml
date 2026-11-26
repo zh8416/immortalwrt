@@ -1,4 +1,4 @@
-name: 编译固件
+name: 1 - 编译固件
 
 # 手动触发；机型用 boolean 勾选（可多选），config_file 保持文本框
 on:
