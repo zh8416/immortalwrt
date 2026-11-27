@@ -152,12 +152,13 @@ def main():
     out.append("### 依赖树\n")
     out.append("图例：" + BADGE["y"] + " " + BADGE["n"] + " " + BADGE["missing"] + "\n")
 
-    # Markdown 图片徽章在 <pre> 代码块里不会渲染，故用 <br> 换行 + &nbsp; 缩进
+    # Markdown 图片徽章在 <pre> 代码块里不会渲染，故用行尾双空格硬换行 + &nbsp; 缩进。
+    # 注意：不要同时用 <br> 和换行符——GFM 会把两者都转成 <br>，导致每行间空一行。
     def render(name, prefix, is_last, depth):
         st = status(name)
         connector = "└─ " if is_last else "├─ "
         nb = prefix.replace(" ", "&nbsp;")
-        out.append(nb + connector + name + " " + BADGE[st] + "<br>")
+        out.append(nb + connector + name + " " + BADGE[st] + "  ")  # 行尾两空格 = Markdown 硬换行
         kids = children.get(name, [])
         child_prefix = prefix + ("   " if is_last else "│  ")
         for i, k in enumerate(kids):
@@ -178,11 +179,12 @@ def main():
     else:
         print(text)
 
-    # 同时打印到日志：徽章图片换成纯文本标签，<br>/&nbsp; 还原为换行/空格
+    # 同时打印到日志：徽章图片换成纯文本标签，&nbsp; 还原为空格，去掉行尾硬换行空格
     logtext = text
     for st, word in (("y", "已勾选"), ("n", "未勾选"), ("missing", "不包含")):
         logtext = logtext.replace(BADGE[st], "[" + word + "]")
-    logtext = logtext.replace("<br>", "\n").replace("&nbsp;", " ")
+    logtext = logtext.replace("&nbsp;", " ")
+    logtext = "\n".join(line.rstrip() for line in logtext.split("\n"))
     print("\n===== 依赖检查报告 =====\n")
     print(logtext)
     return 0
